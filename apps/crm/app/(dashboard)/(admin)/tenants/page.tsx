@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { Settings, BarChart3, Phone } from "lucide-react";
+import { Settings, Users, Phone, LogIn } from "lucide-react";
 import { getTenantStats } from "@/lib/admin-stats";
 import { Button } from "@/components/ui/button";
+import { impersonateTenant } from "@/app/(dashboard)/actions";
 
 export const dynamic = "force-dynamic";
 
@@ -58,17 +59,25 @@ export default async function TenantsPage() {
               <Metric label="Urgentes" value={s.urgent} accent="red" />
             </div>
 
-            <div className="flex gap-2">
-              <Button asChild size="sm" variant="outline" className="flex-1">
-                <Link href={`/tenants/${s.tenant.id}/settings`}>
-                  <Settings className="h-3.5 w-3.5" /> Configurar
-                </Link>
-              </Button>
-              <Button asChild size="sm" variant="outline" className="flex-1">
-                <Link href="/stats">
-                  <BarChart3 className="h-3.5 w-3.5" /> Estadísticas
-                </Link>
-              </Button>
+            <div className="space-y-2">
+              <div className="flex gap-2">
+                <Button asChild size="sm" variant="outline" className="flex-1">
+                  <Link href={`/tenants/${s.tenant.id}/settings`}>
+                    <Settings className="h-3.5 w-3.5" /> Configurar
+                  </Link>
+                </Button>
+                <Button asChild size="sm" variant="outline" className="flex-1">
+                  <Link href={`/tenants/${s.tenant.id}/users`}>
+                    <Users className="h-3.5 w-3.5" /> Usuarios
+                  </Link>
+                </Button>
+              </div>
+              <form action={impersonateTenant}>
+                <input type="hidden" name="tenant_id" value={s.tenant.id} />
+                <Button type="submit" size="sm" className="w-full">
+                  <LogIn className="h-3.5 w-3.5" /> Ingresar como este tenant
+                </Button>
+              </form>
             </div>
           </div>
         ))}

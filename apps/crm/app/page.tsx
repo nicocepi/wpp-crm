@@ -5,6 +5,7 @@ export const dynamic = "force-dynamic";
 
 export default async function Home() {
   const profile = await getCurrentProfile();
-  // El admin arranca en la vista de tenants; el resto en sus contactos.
-  redirect(profile?.role === "admin" ? "/tenants" : "/contacts");
+  // Admin (sin impersonar) arranca en tenants; el resto en sus contactos.
+  const toTenants = profile?.role === "admin" && !profile.impersonating;
+  redirect(toTenants ? "/tenants" : "/contacts");
 }

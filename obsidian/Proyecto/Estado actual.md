@@ -14,7 +14,16 @@
 - **CRM** (Next.js) levanta, auth por magic link, grid de contactos, realtime, settings del bot.
 - **Handoff a humano**: opciones 1/6 derivan a agente y pausan el bot; el agente responde desde el CRM (compositor + Tomar control/Reactivar bot). Resumen IA del recorrido + consulta, labels automáticas "Necesita agente" y "Urgente" (clasificada por IA), y campanita. Ver [[Decisiones/Handoff a humano (Fase 1)]].
 - **Editor de flujos en el CRM**: settings permite elegir modo (IA/menú) y editar el `flow_definition` (JSON) con validación.
+- **Roles member/admin** (probado): el member ve solo Contactos; el admin ve **Tenants** + **Estadísticas** (sin Contactos propios) y edita la config de cada tenant. RLS con `OR is_admin()`. Ver [[Decisiones/Roles y vistas de admin]].
+- **ABM de usuarios por tenant** (probado): el admin da de alta/baja y lista usuarios de cada tenant (`/tenants/[id]/usuarios`), con cliente service role server-only detrás de `isAdmin()`.
+- **Impersonación** (probado): el admin "ingresa como" un tenant y ve/usa la vista member, con banner para salir (cookie `act_as_tenant`, sin forjar sesión).
+- **Repo en GitHub**: https://github.com/nicocepi/wpp-crm (rama main). ⚠️ Los cambios de ABM/impersonación aún **no están pusheados**.
 - **Builds** de ambas apps sin errores TypeScript.
+
+## Usuarios
+- `nlopez@cepidesigns.com.ar` → **admin** (su `tenant_id` queda null al correr `users-admin.sql`; hoy aún apunta a RQ).
+- `nicolaslopezluna@gmail.com` → **member** de RQ Administración.
+- `demo@tuempresa.com` → member de RQ (de pruebas).
 
 ## Tenant RQ Administración
 - Modo **menú** (`flow_type='menu'`), árbol cargado desde `n8n/flows/rq-administracion.json`.
@@ -27,12 +36,13 @@
 - Token: **permanente**, validado (ver [[Decisiones/Verificación del token de Meta]]).
 
 ## Qué falta / pendiente
+- **Correr `supabase/users-admin.sql`** (tenant_id nullable + nlopez sin tenant). Hoy funciona igual, pero el admin sigue ligado a RQ hasta correrlo.
+- Pushear a GitHub los cambios de ABM de usuarios + impersonación.
 - Reemplazar placeholders del flujo de RQ (opciones 8–11 y teléfonos 12–15).
-- Probar el handoff end-to-end por WhatsApp (opción 6 → agente responde desde el CRM).
 - Deploy productivo: CRM a Vercel, webhook a un host Node, n8n a VPS.
 - Reemplazar ngrok por un dominio estable para el webhook.
 - Templates de mensajes (fuera de ventana 24h) — fuera de scope actual.
-- Documentar onboarding de un segundo tenant real.
+- Onboarding de nuevos tenants desde la UI (hoy se crean por SQL/REST).
 
 ## Cómo levantar todo localmente
 Ver [[Infraestructura/Servicios locales]].

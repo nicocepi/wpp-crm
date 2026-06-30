@@ -1,14 +1,13 @@
-import { MessageCircle, LogOut } from "lucide-react";
+import { MessageCircle, LogOut, Eye } from "lucide-react";
 import { getCurrentProfile } from "@/lib/tenant";
 import { SidebarNav, type NavItem } from "@/components/sidebar-nav";
 import { Button } from "@/components/ui/button";
-import { signOut } from "./actions";
+import { signOut, stopImpersonating } from "./actions";
 
 const MEMBER_NAV: NavItem[] = [
   { href: "/contacts", label: "Contactos", icon: "contacts" },
 ];
 const ADMIN_NAV: NavItem[] = [
-  { href: "/contacts", label: "Contactos", icon: "contacts" },
   { href: "/tenants", label: "Tenants", icon: "tenants" },
   { href: "/stats", label: "Estadisticas", icon: "stats" },
 ];
@@ -21,15 +20,17 @@ export default async function DashboardLayout({
   const profile = await getCurrentProfile();
   const tenant = profile?.tenant ?? null;
   const isAdmin = profile?.role === "admin";
+  const impersonating = profile?.impersonating ?? false;
+  // Mientras impersona, el admin ve/usa lo mismo que un member.
+  const memberView = impersonating || !isAdmin;
 
-  // Usuario autenticado pero sin profile/tenant linkeado.
-  if (!tenant) {
+  // Member sin tenant asignado (el admin sin tenant es valido, sigue de largo).
+  if (!tenant && !isAdmin) {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center gap-4 p-6 text-center">
         <h1 className="text-xl font-semibold">Tu usuario no tiene un tenant asignado</h1>
         <p className="max-w-md text-sm text-muted-foreground">
-          Pedile a un admin que linkee tu usuario a un tenant en la tabla{" "}
-          <code>profiles</code> (ver <code>supabase/seed.sql</code>, bloque 4).
+          Pedile a un admin que te asigne a un tenant.
         </p>
         <form action={signOut}>
           <Button variant="outline" type="submit">
@@ -40,6 +41,8 @@ export default async function DashboardLayout({
     );
   }
 
+  const headerName = memberView && tenant ? tenant.name : "Admin";
+
   return (
     <div className="flex min-h-screen">
       <aside className="hidden w-60 shrink-0 flex-col border-r bg-background md:flex">
@@ -48,13 +51,11 @@ export default async function DashboardLayout({
             <MessageCircle className="h-4 w-4" />
           </div>
           <div className="min-w-0">
-            <p className="truncate text-sm font-semibold">
-              {isAdmin ? "Admin" : tenant.name}
-            </p>
+            <p className="truncate text-sm font-semibold">{headerName}</p>
             <p className="text-xs text-muted-foreground">WhatsApp CRM</p>
           </div>
         </div>
-        <SidebarNav items={isAdmin ? ADMIN_NAV : MEMBER_NAV} />
+        <SidebarNav items={memberView ? MEMBER_NAV : ADMIN_NAV} />
         <div className="mt-auto border-t p-2">
           <form action={signOut}>
             <Button
@@ -67,7 +68,25 @@ export default async function DashboardLayout({
           </form>
         </div>
       </aside>
-      <main className="flex-1 overflow-hidden bg-muted/20">{children}</main>
+      <main className="flex flex-1 flex-col overflow-hidden bg-muted/20">
+        {impersonating && tenant && (
+          <div className="flex items-center justify-between gap-2 border-b bg-indigo-600 px-4 py-2 text-sm text-white">
+            <span className="flex items-center gap-2">
+              <Eye className="h-4 w-4" /> Estás viendo como{" "}
+              <strong>{tenant.name}</strong>
+            </span>
+            <form action={stopImpersonating}>
+              <button
+                type="submit"
+                className="rounded bg-white/20 px-2 py-1 text-xs font-medium hover:bg-white/30"
+              >
+                Salir
+              </button>
+            </form>
+          </div>
+        )}
+        <div className="flex-1 overflow-hidden">{children}</div>
+      </main>
     </div>
   );
 }

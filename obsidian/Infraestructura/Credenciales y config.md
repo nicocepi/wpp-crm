@@ -32,6 +32,7 @@
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Cliente con RLS (sesión del usuario). |
 | `WHATSAPP_API_TOKEN` | **Server-only.** Para que el agente responda por la Cloud API desde el CRM (handoff). Mismo token que `n8n/.env`. |
 | `WHATSAPP_GRAPH_VERSION` | Versión de Graph API (ej. `v21.0`). |
+| `SUPABASE_SERVICE_ROLE_KEY` | **Server-only.** Para el ABM de usuarios (Auth admin API). Solo se usa detrás de `isAdmin()`. Mismo valor que `n8n/.env`. |
 
 ## Supabase — datos clave del tenant demo
 - Proyecto ref: `nimdkfnkvhjzwybalfex`

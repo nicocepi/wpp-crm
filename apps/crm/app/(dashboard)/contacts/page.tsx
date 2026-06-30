@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentTenant } from "@/lib/tenant";
 import type { ContactWithLabels, Label } from "@/lib/types";
@@ -11,7 +12,8 @@ type ContactRow = ContactWithLabels & {
 
 export default async function ContactsPage() {
   const tenant = await getCurrentTenant();
-  if (!tenant) return null; // el layout ya maneja este caso
+  // Admin sin tenant (no impersonando): no tiene contactos propios -> a tenants.
+  if (!tenant) redirect("/tenants");
 
   const supabase = await createClient();
 

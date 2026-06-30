@@ -20,7 +20,7 @@ create table if not exists public.tenants (
 -- ---------------------------------------------------------------------------
 create table if not exists public.profiles (
   user_id uuid primary key references auth.users(id) on delete cascade,
-  tenant_id uuid not null references public.tenants(id) on delete cascade,
+  tenant_id uuid references public.tenants(id) on delete cascade,  -- null = admin (sin tenant)
   role text not null default 'member' check (role in ('member','admin')),  -- admin ve/edita todos los tenants
   created_at timestamptz default now()
 );
