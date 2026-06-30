@@ -1,0 +1,43 @@
+import type { Tables } from "@/lib/database.types";
+
+export type Label = Tables<"labels">;
+export type Contact = Tables<"contacts">;
+export type Message = Tables<"messages">;
+export type BotConfig = Tables<"bot_configs">;
+export type Tenant = Tables<"tenants">;
+
+/** Contacto con sus labels resueltas (join contact_labels -> labels). */
+export type ContactWithLabels = Contact & {
+  labels: Label[];
+};
+
+/** Nombre de la label que marca "necesita atención humana". */
+export const ATTENTION_LABEL = "Necesita agente";
+/** Nombre de la label de urgencia (la clasifica la IA). */
+export const URGENT_LABEL = "Urgente";
+
+/** Estado de conversación de menú guardado en contacts.flow_state (jsonb). */
+export type FlowState = {
+  current_menu?: string | null;
+  muted_date?: string | null;
+  handoff?: boolean;
+  urgent?: boolean;
+};
+
+/** Lee flow_state de forma segura (el campo es jsonb / Json). */
+export function readFlowState(contact: Pick<Contact, "flow_state">): FlowState {
+  const fs = contact.flow_state;
+  return fs && typeof fs === "object" && !Array.isArray(fs)
+    ? (fs as FlowState)
+    : {};
+}
+
+/** ¿El contacto está derivado a un humano (bot en pausa)? */
+export function isHandoff(contact: Pick<Contact, "flow_state">): boolean {
+  return readFlowState(contact).handoff === true;
+}
+
+/** ¿La consulta del contacto fue clasificada como urgente? */
+export function isUrgent(contact: Pick<Contact, "flow_state">): boolean {
+  return readFlowState(contact).urgent === true;
+}

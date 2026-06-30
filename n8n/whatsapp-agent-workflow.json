@@ -1,0 +1,1768 @@
+{
+  "name": "WhatsApp Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "whatsapp",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "e65d40b3-d062-4860-9bea-e409bde47c6c",
+      "name": "Webhook WhatsApp",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        280,
+        300
+      ],
+      "webhookId": "18add3b5-5138-484c-9305-de180ae55d89"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "d1f3b3b2-5278-46e5-a83c-558043fb198b",
+              "leftValue": "={{ $json.headers['x-n8n-secret'] }}",
+              "rightValue": "={{ $env.N8N_WEBHOOK_SECRET }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      },
+      "id": "11701264-9f47-4c61-845b-13f5afa9e6a1",
+      "name": "Secret valido?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        560,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const body = $input.first().json.body || {};\nreturn [{ json: {\n  phone_number_id: body.phone_number_id,\n  from: body.from,\n  contact_name: body.contact_name || null,\n  message_id: body.message_id,\n  type: body.type || 'text',\n  text: body.text || '',\n  timestamp: body.timestamp || new Date().toISOString(),\n} }];"
+      },
+      "id": "43687b6f-7bd4-4285-9df5-202ceb1ad235",
+      "name": "ctx",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        840,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/tenants?whatsapp_phone_id=eq.{{ $('ctx').item.json.phone_number_id }}&select=id",
+        "options": {},
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        }
+      },
+      "id": "1a535c15-f00c-49f4-88db-4191e4ff0d0e",
+      "name": "Resolve tenant",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1120,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const items = $input.all().map(i => i.json);\nlet tenant = null;\nif (items.length === 1 && Array.isArray(items[0])) tenant = items[0][0] || null;\nelse if (items.length >= 1 && items[0] && items[0].id) tenant = items[0];\nelse if (items.length === 1 && items[0] && Array.isArray(items[0].body)) tenant = items[0].body[0] || null;\nconst ctx = $('ctx').first().json;\nreturn [{ json: { ...ctx, tenant_id: tenant ? tenant.id : null, has_tenant: !!tenant } }];"
+      },
+      "id": "c8470beb-91ac-4074-9db7-c3b67ada9faa",
+      "name": "prep",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1400,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "d54fd282-72ad-422c-a25a-046e82d0642b",
+              "leftValue": "={{ $json.has_tenant }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        }
+      },
+      "id": "bfd913df-7c6c-45c2-a4a4-87ac5853ef6f",
+      "name": "Tenant existe?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/contacts?on_conflict=tenant_id,phone",
+        "options": {},
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates,return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ tenant_id: $('prep').item.json.tenant_id, phone: $('prep').item.json.from, name: $('prep').item.json.contact_name, last_message_at: $('prep').item.json.timestamp, last_message_preview: $('prep').item.json.text }) }}"
+      },
+      "id": "b71fbbae-a817-48c5-9252-d293770f61cf",
+      "name": "Upsert contact",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1960,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const items = $input.all().map(i => i.json);\nlet row = null;\nif (items.length === 1 && Array.isArray(items[0])) row = items[0][0] || null;\nelse if (items[0] && items[0].id) row = items[0];\nelse if (items[0] && Array.isArray(items[0].body)) row = items[0].body[0] || null;\nconst p = $('prep').first().json;\nreturn [{ json: { ...p, contact_id: row ? row.id : null, flow_state: row ? row.flow_state : {} } }];"
+      },
+      "id": "6a77f193-13f6-4218-a88b-07240a238b4b",
+      "name": "contact_id",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/messages?on_conflict=whatsapp_message_id",
+        "options": {},
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "resolution=ignore-duplicates,return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ tenant_id: $('contact_id').item.json.tenant_id, contact_id: $('contact_id').item.json.contact_id, whatsapp_message_id: $('contact_id').item.json.message_id, direction: 'inbound', content: $('contact_id').item.json.text, message_type: $('contact_id').item.json.type, sent_at: $('contact_id').item.json.timestamp }) }}"
+      },
+      "id": "f5d6b2f6-f924-45de-8f26-3654fececbe1",
+      "name": "Insert inbound",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2520,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/bot_configs?tenant_id=eq.{{ $('contact_id').item.json.tenant_id }}&select=enabled,system_prompt,reply_delay_seconds,flow_type,flow_definition",
+        "options": {},
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        }
+      },
+      "id": "db4f4004-f9c4-4c17-9157-355389cfabac",
+      "name": "Get bot_config",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2800,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/messages?contact_id=eq.{{ $('contact_id').item.json.contact_id }}&order=sent_at.desc&limit=10&select=direction,content,sent_at",
+        "options": {},
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        }
+      },
+      "id": "0ab2fd7a-f848-463e-b208-740b6e275a3a",
+      "name": "Get history",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3080,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "function unwrap(json){ if(Array.isArray(json)) return json; if(json && Array.isArray(json.body)) return json.body; if(json && json.id!==undefined) return [json]; return []; }\nconst cfgArr = unwrap($('Get bot_config').first().json);\nconst cfg = cfgArr[0] || { enabled: true, system_prompt: '', reply_delay_seconds: 2 };\nconst hist = unwrap($('Get history').first().json).slice().reverse();\nconst c = $('contact_id').first().json;\n\n// Ventana de 24h: solo respuesta libre si el mensaje entrante es < 24h.\nconst ageMs = Date.now() - new Date(c.timestamp).getTime();\nconst within24h = ageMs < 24*60*60*1000;\nconst can_reply = !!cfg.enabled && within24h;\n\n// Construye el array de messages para Claude (alterna user/assistant).\nconst messages = [];\nfor (const m of hist) {\n  const role = m.direction === 'outbound' ? 'assistant' : 'user';\n  if (m.content) messages.push({ role, content: m.content });\n}\n// Asegura que el ultimo turno sea del user (mensaje actual).\nif (messages.length === 0 || messages[messages.length-1].role !== 'user') {\n  messages.push({ role: 'user', content: c.text });\n}\n\nreturn [{ json: {\n  ...c,\n  enabled: !!cfg.enabled,\n  system_prompt: cfg.system_prompt || 'Sos un asistente de atencion al cliente. Responde breve y amable en espanol.',\n  reply_delay_seconds: cfg.reply_delay_seconds ?? 2,\n  within24h, can_reply, messages,\n} }];"
+      },
+      "id": "487bf89d-9156-45e8-ad22-91c52b37f098",
+      "name": "prep AI",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3360,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "options": {},
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{ $env.ANTHROPIC_API_KEY }}"
+            },
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 80, system: [{ type: 'text', text: 'Extrae en UNA frase corta (max 12 palabras) que necesita o pide el contacto. Responde solo la frase, sin comillas.', cache_control: { type: 'ephemeral' } }], messages: [{ role: 'user', content: $('prep AI').item.json.text }] }) }}"
+      },
+      "id": "eea1e66d-761a-4832-ba3c-e6bd0f52af33",
+      "name": "Claude extract needs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3640,
+        140
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/contacts?id=eq.{{ $('contact_id').item.json.contact_id }}",
+        "options": {},
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ needs: (($json.content && $json.content[0] && $json.content[0].text) || '').trim(), status: 'active' }) }}"
+      },
+      "id": "e26b4590-60a0-41d7-b943-08320352af83",
+      "name": "Update needs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3920,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "3085e0da-6d87-4b7a-aef3-defc3064ef95",
+              "leftValue": "={{ $('prep AI').item.json.can_reply }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        }
+      },
+      "id": "c6dd35fa-50cf-43f5-8687-dd2e7d3b9204",
+      "name": "Responder?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3640,
+        460
+      ]
+    },
+    {
+      "parameters": {
+        "amount": "={{ $('prep AI').item.json.reply_delay_seconds }}",
+        "unit": "seconds"
+      },
+      "id": "a861b3de-1140-450e-a91d-4e82cacd3fc4",
+      "name": "Wait delay",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        3920,
+        460
+      ],
+      "webhookId": "547addae-aac4-4626-b75b-e4a2478c0255"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "options": {},
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{ $env.ANTHROPIC_API_KEY }}"
+            },
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 500, system: [{ type: 'text', text: $('prep AI').item.json.system_prompt, cache_control: { type: 'ephemeral' } }], messages: $('prep AI').item.json.messages }) }}"
+      },
+      "id": "a2a841ba-0ede-4205-a2ce-8b4178a20304",
+      "name": "Claude reply",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4200,
+        460
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/v21.0/{{ $('prep AI').item.json.phone_number_id }}/messages",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 100
+            }
+          }
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.WHATSAPP_API_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ messaging_product: 'whatsapp', to: $('prep AI').item.json.from, type: 'text', text: { body: (($json.content && $json.content[0] && $json.content[0].text) || '').trim() } }) }}"
+      },
+      "id": "264be7ea-bba9-441f-a209-61b2b3e0fe19",
+      "name": "Send WhatsApp",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4480,
+        460
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/messages",
+        "options": {},
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ tenant_id: $('prep AI').item.json.tenant_id, contact_id: $('prep AI').item.json.contact_id, direction: 'outbound', content: (($('Claude reply').item.json.content && $('Claude reply').item.json.content[0] && $('Claude reply').item.json.content[0].text) || '').trim(), message_type: 'text', sent_at: new Date().toISOString() }) }}"
+      },
+      "id": "a8b2bde8-0a74-4d32-bc44-36850bfe13d7",
+      "name": "Insert outbound",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4760,
+        460
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/failed_messages",
+        "options": {},
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ tenant_id: $('prep AI').item.json.tenant_id, contact_phone: $('prep AI').item.json.from, content: $('prep AI').item.json.text, error: $('prep AI').item.json.enabled ? 'fuera de ventana 24h' : 'bot deshabilitado' }) }}"
+      },
+      "id": "a07c1278-113c-4fcc-9bce-0c1e0f5d2488",
+      "name": "Log failed (ventana)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3920,
+        620
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/failed_messages",
+        "options": {},
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ tenant_id: $('prep AI').item.json.tenant_id, contact_phone: $('prep AI').item.json.from, content: 'respuesta IA', error: 'fallo el envio a Meta' }) }}"
+      },
+      "id": "6b8dade4-1118-4305-a3fd-2e1a6e676991",
+      "name": "Log failed (send)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4760,
+        620
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "function unwrap(json){ if(Array.isArray(json)) return json; if(json && Array.isArray(json.body)) return json.body; if(json && typeof json === 'object') return [json]; return []; }\nconst cfgArr = unwrap($('Get bot_config').first().json);\nconst cfg = cfgArr[0] || {};\nconst c = $('contact_id').first().json;\nreturn [{ json: { ...c,\n  flow_type: cfg.flow_type || 'ai',\n  flow_definition: cfg.flow_definition || null,\n  enabled: cfg.enabled !== false,\n  system_prompt: cfg.system_prompt || '',\n  reply_delay_seconds: cfg.reply_delay_seconds ?? 2,\n} }];"
+      },
+      "id": "5750d8c2-ae5a-463d-9d0f-e5c3652e499e",
+      "name": "bot cfg",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2940,
+        760
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "543a814d-75b9-461b-a4d0-0ce44074630b",
+              "leftValue": "={{ $json.flow_type }}",
+              "rightValue": "menu",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      },
+      "id": "24e3132f-4a81-4424-9ea9-86b9df1fdc19",
+      "name": "Modo menu?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3220,
+        760
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const j = $('bot cfg').first().json;\nconst flow = j.flow_definition || { start: 'root', nodes: {}, invalid_message: 'Opción no válida.' };\nconst state = (j.flow_state && typeof j.flow_state === 'object') ? j.flow_state : {};\nconst text = (j.text || '').toString();\nconst reply_delay_seconds = j.reply_delay_seconds ?? 1;\n\n// Fecha local AR para el mute \"resto del día\" (auto-resetea al día siguiente).\nconst todayAR = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date());\n\n// Handoff: un humano tomó el chat -> el bot queda en silencio hasta que se libere desde el CRM.\nif (state.handoff === true) {\n  return [{ json: { should_send: false, reply: '', reply_delay_seconds, handoff_triggered: false, summary_triggered: false, new_flow_state: state } }];\n}\n\n// Muteado hoy -> silencio total, sin tocar el estado.\nif (state.muted_date && state.muted_date === todayAR) {\n  return [{ json: { should_send: false, reply: '', reply_delay_seconds, handoff_triggered: false, summary_triggered: false, new_flow_state: state } }];\n}\n\n// Esperando la consulta libre (tras elegir \"hablar con un representante\"):\n// el mensaje actual ES la consulta -> deriva a humano y dispara el resumen.\nif (state.awaiting_query === true) {\n  const reply = '¡Gracias! Registramos tu consulta. En breve te atenderá un representante.';\n  const new_flow_state = { ...state, handoff: true, awaiting_query: false, current_menu: null, consulta: text };\n  return [{ json: { should_send: true, reply, reply_delay_seconds, handoff_triggered: true, summary_triggered: true, path: state.path || [], consulta: text, new_flow_state } }];\n}\n\nconst nodes = flow.nodes || {};\nconst m = text.match(/\\d+/);\nconst num = m ? m[0] : null;\nlet current = state.current_menu || null;\nlet reply = '';\nlet next_menu = current;\nlet muted_date = null;\nlet handoff = false;\nlet handoff_triggered = false;\nlet summary_triggered = false;\nlet awaiting_query = false;\n// Recorrido del menú en esta sesión (títulos de los nodos visitados).\nlet path = Array.isArray(state.path) ? state.path.slice() : [];\n\nif (!current) {\n  // Inicio de sesión: bienvenida (ignora lo tipeado). Reinicia el recorrido.\n  const startNode = nodes[flow.start] || { message: '' };\n  reply = startNode.message || '';\n  next_menu = flow.start;\n  path = [];\n} else {\n  const curNode = nodes[current] || { options: {} };\n  const opts = curNode.options || {};\n  const target = (num !== null && Object.prototype.hasOwnProperty.call(opts, num)) ? opts[num] : null;\n  if (!target) {\n    // Opción inválida: queda en el mismo menú.\n    reply = flow.invalid_message || 'Opción no válida.';\n    next_menu = current;\n  } else if (target === flow.start) {\n    // \"Volver a empezar\": reinicia el recorrido.\n    reply = (nodes[target] && nodes[target].message) || '';\n    next_menu = flow.start;\n    path = [];\n  } else {\n    const tNode = nodes[target] || { message: '' };\n    reply = tNode.message || '';\n    path.push(tNode.title || target);   // registra el paso elegido\n    if (tNode.await_query) { awaiting_query = true; next_menu = null; }                  // pide la consulta libre (handoff al próximo mensaje)\n    else if (tNode.handoff) { handoff = true; handoff_triggered = true; summary_triggered = true; next_menu = null; }  // derivar a humano (pausa el bot)\n    else if (tNode.mute) { muted_date = todayAR; next_menu = null; }\n    else if (tNode.options) { next_menu = target; }            // submenú\n    else { next_menu = null; summary_triggered = true; }       // terminal de mensaje predefinido -> resume igual\n  }\n}\n\nconst new_flow_state = { current_menu: next_menu, muted_date, handoff, awaiting_query, path };\nreturn [{ json: { should_send: (reply || '').length > 0, reply, reply_delay_seconds, handoff_triggered, summary_triggered, path, new_flow_state } }];"
+      },
+      "id": "aff768a5-b049-40b2-b3c1-73174c9de007",
+      "name": "Menu engine",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3500,
+        760
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/contacts?id=eq.{{ $('contact_id').item.json.contact_id }}",
+        "options": {},
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ flow_state: $('Menu engine').item.json.new_flow_state }) }}"
+      },
+      "id": "8960a39e-e55a-436c-8fff-d575a98af0cf",
+      "name": "Patch flow_state",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3780,
+        760
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "e8fb3589-35f2-4f1e-9093-872d037d584e",
+              "leftValue": "={{ $('Menu engine').item.json.should_send }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        }
+      },
+      "id": "b7af20eb-9a36-4a7a-ac8d-3e9eb8cc7a70",
+      "name": "Enviar? (menu)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        4060,
+        760
+      ]
+    },
+    {
+      "parameters": {
+        "amount": "={{ $('Menu engine').item.json.reply_delay_seconds }}",
+        "unit": "seconds"
+      },
+      "id": "2407a199-eb53-48ff-aae8-842ae360bd70",
+      "name": "Wait delay (menu)",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        4340,
+        760
+      ],
+      "webhookId": "41328a87-3ae9-4522-9ccf-7c70d0d14cd3"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/v21.0/{{ $('contact_id').item.json.phone_number_id }}/messages",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 100
+            }
+          }
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.WHATSAPP_API_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ messaging_product: 'whatsapp', to: $('contact_id').item.json.from, type: 'text', text: { body: $('Menu engine').item.json.reply } }) }}"
+      },
+      "id": "d277e0c7-32c9-4ecf-a1e2-25fa14f9557e",
+      "name": "Send WhatsApp (menu)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4620,
+        760
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/messages",
+        "options": {},
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ tenant_id: $('contact_id').item.json.tenant_id, contact_id: $('contact_id').item.json.contact_id, direction: 'outbound', content: $('Menu engine').item.json.reply, message_type: 'text', sent_at: new Date().toISOString() }) }}"
+      },
+      "id": "d520b8be-36eb-4472-8d7b-301632309a7e",
+      "name": "Insert outbound (menu)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4900,
+        760
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "69c0c222-9f4d-4bc9-9ad7-b7aac5c16b8e",
+              "leftValue": "={{ $('Menu engine').item.json.summary_triggered }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        }
+      },
+      "id": "48cca48c-26cb-4269-870d-b83766ec9a1b",
+      "name": "Resumir?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3780,
+        1000
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/messages?contact_id=eq.{{ $('contact_id').item.json.contact_id }}&order=sent_at.desc&limit=15&select=direction,content,sent_at",
+        "options": {},
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        }
+      },
+      "id": "5f4ae6b2-1370-47bd-8bf4-6642f9e35a75",
+      "name": "Get history (menu)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4060,
+        1000
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "function unwrap(json){ if(Array.isArray(json)) return json; if(json && Array.isArray(json.body)) return json.body; if(json && typeof json === 'object') return [json]; return []; }\nconst me = $('Menu engine').first().json;\nconst path = Array.isArray(me.path) ? me.path : [];\nconst pathStr = path.join(' → ');\nconst consulta = (me.consulta || '').toString().trim();\n// Comentarios en texto libre del contacto (no simples números de opción).\nconst hist = unwrap($('Get history (menu)').first().json).slice().reverse();\nconst comments = hist.filter(m => m.direction === 'inbound' && m.content && !/^\\s*\\d+\\s*$/.test(m.content)).map(m => m.content);\nconst extra = comments.length ? ('\\nMensajes en texto del contacto: ' + comments.join(' | ')) : '';\nlet convo = 'Pasos del menú que recorrió: ' + (pathStr || '(ninguno)');\nif (consulta) convo += '\\nConsulta que escribió: ' + consulta;\nconvo += extra;\nreturn [{ json: { convo, pathStr, consulta } }];"
+      },
+      "id": "64c2befd-f85b-4eb9-b253-a3efa5819d36",
+      "name": "prep summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4340,
+        1000
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "options": {},
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{ $env.ANTHROPIC_API_KEY }}"
+            },
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 150, system: [{ type: 'text', text: 'Sos asistente de una administración de consorcios. El contacto usó un menú de WhatsApp. A partir de los pasos del menú y, si la hay, la consulta que escribió, devolvé SOLO un JSON válido (sin texto extra ni markdown) con la forma {\\\"urgente\\\": true|false, \\\"resumen\\\": \\\"...\\\"}. El campo resumen: 1 o 2 frases en español de qué consultó o necesita, para que un agente lo retome; priorizá la consulta escrita y mencioná los pasos; sé específico; NO escribas solo que espera ser atendido. El campo urgente: true SOLO si refleja una urgencia real (fuga de gas, inundación, incendio, ascensor con personas atrapadas, falta de un servicio esencial, riesgo a personas o bienes); si no, false.', cache_control: { type: 'ephemeral' } }], messages: [{ role: 'user', content: $('prep summary').item.json.convo }] }) }}"
+      },
+      "id": "c527925f-fe3a-49e2-8c1f-38026fb94b1c",
+      "name": "Claude summary",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4620,
+        1000
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const c = $('Claude summary').first().json;\nconst raw = ((c.content && c.content[0] && c.content[0].text) || '').trim();\nlet urgente = false;\nlet resumen = '';\ntry {\n  const m = raw.match(/\\{[\\s\\S]*\\}/);\n  const obj = JSON.parse(m ? m[0] : raw);\n  if (typeof obj.urgente === 'boolean') urgente = obj.urgente;\n  if (obj.resumen) resumen = String(obj.resumen).trim();\n} catch (e) {\n  resumen = raw; // si no vino JSON, usar el texto crudo\n}\nif (!resumen) {\n  const ps = $('prep summary').first().json;\n  resumen = (ps.consulta ? ('Consulta: ' + ps.consulta + '. ') : '') + 'Pasos: ' + (ps.pathStr || 'sin registrar');\n}\nreturn [{ json: { resumen, urgente } }];"
+      },
+      "id": "44ff2d6c-f4b4-4b4b-ad61-bfc805de8769",
+      "name": "parse result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4760,
+        1000
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/contacts?id=eq.{{ $('contact_id').item.json.contact_id }}",
+        "options": {},
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ needs: $('parse result').item.json.resumen, status: 'active' }) }}"
+      },
+      "id": "4b760a3a-9a8f-4030-b714-ad4dd19ad187",
+      "name": "Update needs (menu)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4900,
+        1000
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "deb83287-37b3-40a3-ba54-25303e05094b",
+              "leftValue": "={{ $('Menu engine').item.json.handoff_triggered }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        }
+      },
+      "id": "ffb88b5e-8070-40e9-9aa1-d97193248f84",
+      "name": "Handoff?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        5180,
+        1000
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/labels?tenant_id=eq.{{ $('contact_id').item.json.tenant_id }}&name=eq.Necesita%20agente&select=id&limit=1",
+        "options": {},
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        }
+      },
+      "id": "223520a8-2039-49f2-a0a7-87f605f142fc",
+      "name": "Get attention label",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5460,
+        1000
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "function unwrap(json){ if(Array.isArray(json)) return json; if(json && Array.isArray(json.body)) return json.body; if(json && typeof json === 'object') return [json]; return []; }\nconst rows = unwrap($('Get attention label').first().json);\nconst label_id = rows[0] && rows[0].id ? rows[0].id : null;\nreturn [{ json: { label_id, contact_id: $('contact_id').first().json.contact_id } }];"
+      },
+      "id": "41b13ef0-5b02-4ce5-8372-20a098becd7e",
+      "name": "attn label id",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5740,
+        1000
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/contact_labels?on_conflict=contact_id,label_id",
+        "options": {},
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "resolution=ignore-duplicates,return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ contact_id: $('attn label id').item.json.contact_id, label_id: $('attn label id').item.json.label_id }) }}"
+      },
+      "id": "77ee097b-bed2-405c-ab26-43617a98f9d1",
+      "name": "Link attention label",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        6020,
+        1000
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "a6cc4927-20d8-476a-9a76-67bdc61d8f39",
+              "leftValue": "={{ $('parse result').item.json.urgente }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        }
+      },
+      "id": "9bbe721c-4180-4dd1-99b4-750981b29a84",
+      "name": "Urgente?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        6300,
+        1000
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/contacts?id=eq.{{ $('contact_id').item.json.contact_id }}",
+        "options": {},
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ flow_state: Object.assign({}, $('Menu engine').item.json.new_flow_state, { urgent: true }) }) }}"
+      },
+      "id": "8468fd04-5ae5-4a3c-a55f-f02d8708204e",
+      "name": "Set urgent flag",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        6580,
+        1000
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/labels?tenant_id=eq.{{ $('contact_id').item.json.tenant_id }}&name=eq.Urgente&select=id&limit=1",
+        "options": {},
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        }
+      },
+      "id": "aac1313b-6b5e-4d70-b849-2681a8c5f479",
+      "name": "Get urgent label",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        6860,
+        1000
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "function unwrap(json){ if(Array.isArray(json)) return json; if(json && Array.isArray(json.body)) return json.body; if(json && typeof json === 'object') return [json]; return []; }\nconst rows = unwrap($('Get urgent label').first().json);\nconst label_id = rows[0] && rows[0].id ? rows[0].id : null;\nreturn [{ json: { label_id, contact_id: $('contact_id').first().json.contact_id } }];"
+      },
+      "id": "7dcfa30e-57b3-47ed-ace8-2ba2b1cd004b",
+      "name": "urgent label id",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7140,
+        1000
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/contact_labels?on_conflict=contact_id,label_id",
+        "options": {},
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "resolution=ignore-duplicates,return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ contact_id: $('urgent label id').item.json.contact_id, label_id: $('urgent label id').item.json.label_id }) }}"
+      },
+      "id": "1299d688-2bbe-4b5f-bb34-fd6a06d9ec84",
+      "name": "Link urgent label",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        7420,
+        1000
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "content": "## WhatsApp Agent\\n\\nEnv requeridas (Settings -> Variables o env del contenedor):\\n- SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY\\n- ANTHROPIC_API_KEY\\n- WHATSAPP_API_TOKEN\\n- N8N_WEBHOOK_SECRET\\n\\nRequiere N8N_BLOCK_ENV_ACCESS_IN_NODE=false para leer $env.\\n\\nDocs Meta: https://developers.facebook.com/docs/whatsapp/cloud-api/reference/messages",
+        "height": 320,
+        "width": 360,
+        "color": 4
+      },
+      "id": "1736aece-a630-41e0-894a-2a3d8a32df21",
+      "name": "Notas",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        200,
+        620
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook WhatsApp": {
+      "main": [
+        [
+          {
+            "node": "Secret valido?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Secret valido?": {
+      "main": [
+        [
+          {
+            "node": "ctx",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ctx": {
+      "main": [
+        [
+          {
+            "node": "Resolve tenant",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolve tenant": {
+      "main": [
+        [
+          {
+            "node": "prep",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "prep": {
+      "main": [
+        [
+          {
+            "node": "Tenant existe?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tenant existe?": {
+      "main": [
+        [
+          {
+            "node": "Upsert contact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert contact": {
+      "main": [
+        [
+          {
+            "node": "contact_id",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "contact_id": {
+      "main": [
+        [
+          {
+            "node": "Insert inbound",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert inbound": {
+      "main": [
+        [
+          {
+            "node": "Get bot_config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get bot_config": {
+      "main": [
+        [
+          {
+            "node": "bot cfg",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "bot cfg": {
+      "main": [
+        [
+          {
+            "node": "Modo menu?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Modo menu?": {
+      "main": [
+        [
+          {
+            "node": "Menu engine",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get history",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get history": {
+      "main": [
+        [
+          {
+            "node": "prep AI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Menu engine": {
+      "main": [
+        [
+          {
+            "node": "Patch flow_state",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Resumir?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Patch flow_state": {
+      "main": [
+        [
+          {
+            "node": "Enviar? (menu)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar? (menu)": {
+      "main": [
+        [
+          {
+            "node": "Wait delay (menu)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait delay (menu)": {
+      "main": [
+        [
+          {
+            "node": "Send WhatsApp (menu)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send WhatsApp (menu)": {
+      "main": [
+        [
+          {
+            "node": "Insert outbound (menu)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resumir?": {
+      "main": [
+        [
+          {
+            "node": "Get history (menu)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get history (menu)": {
+      "main": [
+        [
+          {
+            "node": "prep summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "prep summary": {
+      "main": [
+        [
+          {
+            "node": "Claude summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude summary": {
+      "main": [
+        [
+          {
+            "node": "parse result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "parse result": {
+      "main": [
+        [
+          {
+            "node": "Update needs (menu)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update needs (menu)": {
+      "main": [
+        [
+          {
+            "node": "Handoff?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Handoff?": {
+      "main": [
+        [
+          {
+            "node": "Get attention label",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get attention label": {
+      "main": [
+        [
+          {
+            "node": "attn label id",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "attn label id": {
+      "main": [
+        [
+          {
+            "node": "Link attention label",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Link attention label": {
+      "main": [
+        [
+          {
+            "node": "Urgente?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Urgente?": {
+      "main": [
+        [
+          {
+            "node": "Set urgent flag",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set urgent flag": {
+      "main": [
+        [
+          {
+            "node": "Get urgent label",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get urgent label": {
+      "main": [
+        [
+          {
+            "node": "urgent label id",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "urgent label id": {
+      "main": [
+        [
+          {
+            "node": "Link urgent label",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "prep AI": {
+      "main": [
+        [
+          {
+            "node": "Claude extract needs",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Responder?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude extract needs": {
+      "main": [
+        [
+          {
+            "node": "Update needs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Responder?": {
+      "main": [
+        [
+          {
+            "node": "Wait delay",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log failed (ventana)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait delay": {
+      "main": [
+        [
+          {
+            "node": "Claude reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude reply": {
+      "main": [
+        [
+          {
+            "node": "Send WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send WhatsApp": {
+      "main": [
+        [
+          {
+            "node": "Insert outbound",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log failed (send)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "templatecredsSetupCompleted": false
+  },
+  "tags": []
+}

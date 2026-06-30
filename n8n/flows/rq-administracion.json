@@ -1,0 +1,90 @@
+{
+  "start": "root",
+  "invalid_message": "Opción no válida. Por favor, respondé con el número de una de las opciones del menú.",
+  "nodes": {
+    "root": {
+      "title": "Inicio",
+      "message": "👋 ¡Hola! Bienvenido/a a RQ Administración.\nGracias por comunicarte con nosotros. Por favor, seleccioná una opción respondiendo con el número correspondiente:\n\n1. Soy proveedor\n2. Soy propietario/inquilino",
+      "options": { "1": "aguarde", "2": "menu_prop" }
+    },
+    "menu_prop": {
+      "title": "Propietario/inquilino",
+      "message": "Seleccioná una opción:\n\n3. Expensas\n4. Reclamos y mantenimiento\n5. Contactos de emergencia\n6. Hablar con un representante\n7. Horarios y datos de contacto\n\n0. Volver a empezar",
+      "options": {
+        "3": "menu_expensas",
+        "4": "menu_reclamos",
+        "5": "menu_emergencias",
+        "6": "aguarde_rep",
+        "7": "horarios",
+        "0": "root"
+      }
+    },
+    "menu_expensas": {
+      "title": "Expensas",
+      "message": "Seleccioná una opción:\n\n8. Solicitar copia de liquidación\n9. Informar pago realizado\n\n0. Volver a empezar",
+      "options": { "8": "ph_liquidacion", "9": "ph_pago", "0": "root" }
+    },
+    "menu_reclamos": {
+      "title": "Reclamos y mantenimiento",
+      "message": "Seleccioná una opción:\n\n10. Reclamar desperfectos en espacios comunes o en tu UF\n11. Informar urgencias\n\n0. Volver a empezar",
+      "options": { "10": "ph_desperfectos", "11": "ph_urgencias", "0": "root" }
+    },
+    "menu_emergencias": {
+      "title": "Contactos de emergencia",
+      "message": "Seleccioná una opción:\n\n12. Ascensores\n13. Plomería\n14. Gas\n15. Electricidad\n\n0. Volver a empezar",
+      "options": {
+        "12": "tel_ascensores",
+        "13": "tel_plomeria",
+        "14": "tel_gas",
+        "15": "tel_electricidad",
+        "0": "root"
+      }
+    },
+    "aguarde": {
+      "title": "Soy proveedor",
+      "message": "Aguarde en línea y en breve será atendido.",
+      "handoff": true
+    },
+    "aguarde_rep": {
+      "title": "Hablar con un representante",
+      "message": "Explicá brevemente tu consulta. En breve te atenderá un representante.",
+      "await_query": true
+    },
+    "horarios": {
+      "title": "Horarios y datos de contacto",
+      "message": "Nuestros horarios de atención son de lunes a viernes de 10 a 16hs. Sábado y Domingo cerrado."
+    },
+    "ph_liquidacion": {
+      "title": "Solicitar copia de liquidación",
+      "message": "[PLACEHOLDER] Solicitud de copia de liquidación. (Definir respuesta final)"
+    },
+    "ph_pago": {
+      "title": "Informar pago realizado",
+      "message": "[PLACEHOLDER] Informar pago realizado. (Definir respuesta final)"
+    },
+    "ph_desperfectos": {
+      "title": "Reclamar desperfectos",
+      "message": "[PLACEHOLDER] Reclamo de desperfectos en espacios comunes o UF. (Definir respuesta final)"
+    },
+    "ph_urgencias": {
+      "title": "Informar urgencias",
+      "message": "[PLACEHOLDER] Informar urgencias. (Definir respuesta final)"
+    },
+    "tel_ascensores": {
+      "title": "Ascensores",
+      "message": "🛗 Ascensores — Tel: [PLACEHOLDER +54 11 0000-0001]"
+    },
+    "tel_plomeria": {
+      "title": "Plomería",
+      "message": "🔧 Plomería — Tel: [PLACEHOLDER +54 11 0000-0002]"
+    },
+    "tel_gas": {
+      "title": "Gas",
+      "message": "🔥 Gas — Tel: [PLACEHOLDER +54 11 0000-0003]"
+    },
+    "tel_electricidad": {
+      "title": "Electricidad",
+      "message": "💡 Electricidad — Tel: [PLACEHOLDER +54 11 0000-0004]"
+    }
+  }
+}

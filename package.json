@@ -1,0 +1,18 @@
+{
+  "name": "crm-wpp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "WhatsApp CRM multi-tenant (Next.js + Supabase + n8n + Claude)",
+  "scripts": {
+    "dev:crm": "pnpm --filter crm dev",
+    "dev:webhook": "pnpm --filter webhook dev",
+    "build": "pnpm -r build",
+    "build:crm": "pnpm --filter crm build",
+    "build:webhook": "pnpm --filter webhook build",
+    "start:webhook": "pnpm --filter webhook start"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@10.34.1"
+}

@@ -1,0 +1,63 @@
+services:
+  n8n-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-n8n}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-n8n}
+      POSTGRES_DB: ${POSTGRES_DB:-n8n}
+    volumes:
+      - n8n_db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-n8n}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  n8n:
+    image: n8nio/n8n:latest
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    depends_on:
+      n8n-db:
+        condition: service_healthy
+    environment:
+      # --- Base de datos de n8n ---
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: n8n-db
+      DB_POSTGRESDB_PORT: 5432
+      DB_POSTGRESDB_USER: ${POSTGRES_USER:-n8n}
+      DB_POSTGRESDB_PASSWORD: ${POSTGRES_PASSWORD:-n8n}
+      DB_POSTGRESDB_DATABASE: ${POSTGRES_DB:-n8n}
+
+      # --- n8n core ---
+      N8N_HOST: ${N8N_HOST:-localhost}
+      N8N_PORT: 5678
+      N8N_PROTOCOL: ${N8N_PROTOCOL:-http}
+      # URL publica (con https en produccion detras de proxy). El webhook service
+      # apunta a ${N8N_BASE_URL}/webhook/whatsapp
+      WEBHOOK_URL: ${N8N_BASE_URL:-http://localhost:5678}
+      GENERIC_TIMEZONE: ${TZ:-America/Argentina/Buenos_Aires}
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:?define N8N_ENCRYPTION_KEY en n8n/.env}
+
+      # IMPORTANTE: permite leer $env dentro de los nodos (el workflow lo usa).
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
+
+      # (Opcional) Basic auth del panel de n8n.
+      N8N_BASIC_AUTH_ACTIVE: ${N8N_BASIC_AUTH_ACTIVE:-true}
+      N8N_BASIC_AUTH_USER: ${N8N_BASIC_AUTH_USER:-admin}
+      N8N_BASIC_AUTH_PASSWORD: ${N8N_BASIC_AUTH_PASSWORD:-changeme}
+
+      # --- Variables que usa el workflow via {{ $env.X }} ---
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      WHATSAPP_API_TOKEN: ${WHATSAPP_API_TOKEN}
+      N8N_WEBHOOK_SECRET: ${N8N_WEBHOOK_SECRET}
+    volumes:
+      - n8n_data:/home/node/.n8n
+
+volumes:
+  n8n_db:
+  n8n_data:
