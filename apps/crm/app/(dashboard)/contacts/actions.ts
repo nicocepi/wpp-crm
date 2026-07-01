@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentTenant } from "@/lib/tenant";
 import { readFlowState, ATTENTION_LABEL, URGENT_LABEL } from "@/lib/types";
@@ -83,16 +84,25 @@ export async function sendAgentMessage(
     },
   );
 
-  if (!res.ok) {
-    let detail = `HTTP ${res.status}`;
-    try {
-      const j = await res.json();
-      detail = j?.error?.message ?? detail;
-    } catch {
-      /* noop */
-    }
-    return { ok: false, error: `Meta: ${detail}` };
+  let payload: {
+    error?: { message?: string };
+    messages?: { id?: string }[];
+  } | null = null;
+  try {
+    payload = await res.json();
+  } catch {
+    /* noop */
   }
+
+  if (!res.ok) {
+    return {
+      ok: false,
+      error: `Meta: ${payload?.error?.message ?? `HTTP ${res.status}`}`,
+    };
+  }
+
+  // wamid de Meta -> dedupe del outbound ante reintentos.
+  const wamid = payload?.messages?.[0]?.id ?? null;
 
   // Persistir el outbound (RLS via sesión).
   const { data: inserted, error } = await supabase
@@ -100,6 +110,7 @@ export async function sendAgentMessage(
     .insert({
       tenant_id: tenant.id,
       contact_id: contactId,
+      whatsapp_message_id: wamid,
       direction: "outbound",
       content: body,
       message_type: "text",
@@ -116,6 +127,7 @@ export async function sendAgentMessage(
     .update({ last_message_preview: body, last_message_at: new Date().toISOString() })
     .eq("id", contactId);
 
+  revalidatePath("/contacts");
   return { ok: true, message: inserted as Message };
 }
 
@@ -137,23 +149,24 @@ export async function setHandoff(
     .single();
   if (!contact) return { ok: false, error: "Contacto no encontrado" };
 
-  const current = readFlowState(contact);
-  // Al reactivar el bot hacemos reset completo de la sesión: sin handoff, sin
-  // menú activo, sin mute del día ni urgencia, para que el próximo mensaje
-  // muestre la bienvenida.
-  const next = on
-    ? { ...current, handoff: true }
+  // handoff es una columna dedicada (no flow_state) para evitar el race con n8n.
+  // Tomar control: solo set handoff=true. Reactivar: handoff=false + reset de la
+  // sesión de menú (sin menú activo, sin mute del día ni urgencia) -> bienvenida.
+  const update = on
+    ? { handoff: true }
     : {
-        ...current,
         handoff: false,
-        current_menu: null,
-        muted_date: null,
-        urgent: false,
+        flow_state: {
+          ...readFlowState(contact),
+          current_menu: null,
+          muted_date: null,
+          urgent: false,
+        },
       };
 
   const { error } = await supabase
     .from("contacts")
-    .update({ flow_state: next })
+    .update(update)
     .eq("id", contactId);
 
   if (error) return { ok: false, error: error.message };
@@ -193,5 +206,6 @@ export async function setHandoff(
     }
   }
 
+  revalidatePath("/contacts");
   return { ok: true };
 }

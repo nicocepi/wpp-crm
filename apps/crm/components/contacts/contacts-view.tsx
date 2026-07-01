@@ -55,6 +55,13 @@ export function ContactsView({
   useEffect(() => {
     contactsRef.current = contacts;
   }, [contacts]);
+  // Labels en refs: el handler de realtime las lee sin re-suscribir el canal.
+  const attentionLabelRef = useRef(attentionLabel);
+  const urgentLabelRef = useRef(urgentLabel);
+  useEffect(() => {
+    attentionLabelRef.current = attentionLabel;
+    urgentLabelRef.current = urgentLabel;
+  }, [attentionLabel, urgentLabel]);
   // Contactos cuyo handoff fue iniciado por este agente -> no sonar campanita.
   const suppressChime = useRef<Set<string>>(new Set());
 
@@ -71,14 +78,15 @@ export function ContactsView({
     return current;
   }
 
-  // Refleja las labels automáticas (atención + urgente) según el flow_state.
+  // Refleja las labels automáticas (atención + urgente). Lee de refs para no
+  // quedar con closures viejas en el handler de realtime.
   function withAutoLabels(
     current: Label[],
     handoff: boolean,
     urgent: boolean,
   ): Label[] {
-    let next = toggleLabelIn(current, attentionLabel, handoff);
-    next = toggleLabelIn(next, urgentLabel, urgent && handoff);
+    let next = toggleLabelIn(current, attentionLabelRef.current, handoff);
+    next = toggleLabelIn(next, urgentLabelRef.current, urgent && handoff);
     return next;
   }
 
@@ -134,24 +142,25 @@ export function ContactsView({
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [supabase, tenantId, attentionLabel]);
+  }, [supabase, tenantId]);
 
   // ---- Handoff: tomar/soltar control desde el CRM -------------------------
   async function onToggleHandoff(contact: ContactWithLabels, on: boolean) {
     if (on) suppressChime.current.add(contact.id);
-    // Optimista: flow_state + label local.
+    // Optimista: columna handoff + reset de sesión al reactivar + labels.
     setContacts((prev) =>
       prev.map((c) => {
         if (c.id !== contact.id) return c;
         const fs = readFlowState(c);
         const nextFs = on
-          ? { ...fs, handoff: true }
-          : { ...fs, handoff: false, current_menu: null, muted_date: null, urgent: false };
+          ? fs
+          : { ...fs, current_menu: null, muted_date: null, urgent: false };
         return {
           ...c,
+          handoff: on,
           flow_state: nextFs,
           // Tomar control manual: marca atención, no urgencia. Reactivar: limpia ambas.
-          labels: withAutoLabels(c.labels, on, on ? false : false),
+          labels: withAutoLabels(c.labels, on, false),
         };
       }),
     );
@@ -179,7 +188,14 @@ export function ContactsView({
     const { error } = await supabase.from("contacts").update(patch).eq("id", id);
     if (error) {
       toast.error("No se pudo guardar el cambio");
-      if (prevContact) patchLocal(id, prevContact);
+      // Rollback por-campo: revierte solo las claves tocadas (no pisa updates
+      // de realtime que hayan llegado entremedio).
+      if (prevContact) {
+        const revert = Object.fromEntries(
+          Object.keys(patch).map((k) => [k, prevContact[k as keyof typeof prevContact]]),
+        ) as Partial<ContactWithLabels>;
+        patchLocal(id, revert);
+      }
     }
   }
 

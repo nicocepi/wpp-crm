@@ -31,3 +31,6 @@ ruvector.db
 .agents/
 skills-lock.json
 .claude/
+
+# bóveda de documentación (local, con metadata del negocio) — no se versiona
+obsidian/

@@ -1,7 +1,9 @@
 -- ============================================================================
--- WhatsApp CRM — SCHEMA
+-- WhatsApp CRM — SCHEMA (SNAPSHOT completo al día)
 -- Correr PRIMERO en el SQL editor de Supabase.
--- Orden: schema.sql  ->  policies.sql  ->  seed.sql
+-- Orden y detalle de migraciones: ver supabase/MIGRATIONS.md
+-- Este archivo es un snapshot; incluye lo que agregan los deltas (flows,
+-- roles, logo, event_logs, handoff). Fresh install: schema -> policies -> seed.
 -- ============================================================================
 
 -- ---------------------------------------------------------------------------
@@ -23,7 +25,8 @@ create table if not exists public.profiles (
   user_id uuid primary key references auth.users(id) on delete cascade,
   tenant_id uuid references public.tenants(id) on delete cascade,  -- null = admin (sin tenant)
   role text not null default 'member' check (role in ('member','admin')),  -- admin ve/edita todos los tenants
-  created_at timestamptz default now()
+  created_at timestamptz default now(),
+  constraint profiles_tenant_role_chk check ((role = 'admin') or (tenant_id is not null))  -- member siempre con tenant
 );
 
 -- ---------------------------------------------------------------------------
@@ -38,7 +41,8 @@ create table if not exists public.contacts (
   status text default 'new' check (status in ('new','active','resolved','archived')),
   last_message_at timestamptz,
   last_message_preview text,
-  flow_state jsonb not null default '{}'::jsonb,  -- estado de menú: { current_menu, muted_date }
+  flow_state jsonb not null default '{}'::jsonb,  -- estado de menú: { current_menu, muted_date, path, awaiting_query, urgent }
+  handoff boolean not null default false,         -- humano al control (columna dedicada; ver handoff-column.sql)
   created_at timestamptz default now(),
   unique (tenant_id, phone)
 );

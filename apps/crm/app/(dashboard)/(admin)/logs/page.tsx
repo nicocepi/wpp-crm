@@ -33,7 +33,9 @@ export default async function LogsPage({
 
   if (searchParams.tenant) query = query.eq("tenant_id", searchParams.tenant);
   if (searchParams.level) query = query.eq("level", searchParams.level);
-  const q = searchParams.q?.trim();
+  // Sanitiza metacaracteres del lenguaje de filtros de PostgREST antes de
+  // interpolarlos en .or() (evita reescribir el predicado).
+  const q = searchParams.q?.trim().replace(/[,()\\]/g, "");
   if (q) {
     query = query.or(
       `phone.ilike.%${q}%,event.ilike.%${q}%,message.ilike.%${q}%`,

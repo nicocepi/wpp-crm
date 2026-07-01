@@ -37,7 +37,7 @@ export async function getTenantStats(): Promise<TenantStat[]> {
       supabase.from("tenants").select("*").order("name"),
       supabase
         .from("contacts")
-        .select("tenant_id, status, flow_state, created_at, last_message_at"),
+        .select("tenant_id, status, flow_state, handoff, created_at, last_message_at"),
       supabase.from("bot_configs").select("tenant_id, enabled, flow_type"),
     ]);
 

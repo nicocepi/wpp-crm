@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/tenant";
 
@@ -86,5 +87,6 @@ export async function saveBotConfig(
   );
 
   if (error) return { error: error.message };
+  revalidatePath(`/tenants/${targetTenantId}/settings`);
   return { ok: true };
 }

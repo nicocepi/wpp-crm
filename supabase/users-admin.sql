@@ -10,7 +10,12 @@
 alter table public.profiles
   alter column tenant_id drop not null;
 
--- 2) El admin queda sin tenant.
-update public.profiles
-set tenant_id = null
-where user_id = (select id from auth.users where email = 'nlopez@cepidesigns.com.ar');
+-- 2) El admin queda sin tenant. Email parametrizado en la variable de abajo.
+do $$
+declare
+  v_admin_email text := 'nlopez@cepidesigns.com.ar';  -- CAMBIAR: email del admin
+begin
+  update public.profiles
+  set tenant_id = null
+  where user_id = (select id from auth.users where email = v_admin_email);
+end $$;

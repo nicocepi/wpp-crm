@@ -88,7 +88,12 @@ create policy "tenant_isolation_failed_messages" on public.failed_messages
   using (tenant_id = public.current_tenant_id() or public.is_admin())
   with check (tenant_id = public.current_tenant_id() or public.is_admin());
 
--- 4) Marcar al admin (cambiar el email si corresponde).
-update public.profiles
-set role = 'admin'
-where user_id = (select id from auth.users where email = 'nlopez@cepidesigns.com.ar');
+-- 4) Marcar al admin. El email está parametrizado en la variable de abajo.
+do $$
+declare
+  v_admin_email text := 'nlopez@cepidesigns.com.ar';  -- CAMBIAR: email del admin
+begin
+  update public.profiles
+  set role = 'admin'
+  where user_id = (select id from auth.users where email = v_admin_email);
+end $$;

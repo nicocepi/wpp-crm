@@ -200,7 +200,7 @@ if (items.length === 1 && Array.isArray(items[0])) row = items[0][0] || null;
 else if (items[0] && items[0].id) row = items[0];
 else if (items[0] && Array.isArray(items[0].body)) row = items[0].body[0] || null;
 const p = $('prep').first().json;
-return [{ json: { ...p, contact_id: row ? row.id : null, flow_state: row ? row.flow_state : {} } }];`,
+return [{ json: { ...p, contact_id: row ? row.id : null, flow_state: row ? row.flow_state : {}, handoff: row ? (row.handoff === true) : false } }];`,
   ),
 );
 
@@ -369,7 +369,7 @@ const insertOutbound = push(
     {
       headers: supaHeaders([{ name: "Prefer", value: "return=minimal" }]),
       jsonBody:
-        "={{ JSON.stringify({ tenant_id: $('prep AI').item.json.tenant_id, contact_id: $('prep AI').item.json.contact_id, direction: 'outbound', content: (($('Claude reply').item.json.content && $('Claude reply').item.json.content[0] && $('Claude reply').item.json.content[0].text) || '').trim(), message_type: 'text', sent_at: new Date().toISOString() }) }}",
+        "={{ JSON.stringify({ tenant_id: $('prep AI').item.json.tenant_id, contact_id: $('prep AI').item.json.contact_id, whatsapp_message_id: (($json.messages && $json.messages[0] && $json.messages[0].id) || null), direction: 'outbound', content: (($('Claude reply').item.json.content && $('Claude reply').item.json.content[0] && $('Claude reply').item.json.content[0].text) || '').trim(), message_type: 'text', sent_at: new Date().toISOString() }) }}",
     },
     yB,
   ),
@@ -467,22 +467,23 @@ const reply_delay_seconds = j.reply_delay_seconds ?? 1;
 // Fecha local AR para el mute "resto del día" (auto-resetea al día siguiente).
 const todayAR = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date());
 
-// Handoff: un humano tomó el chat -> el bot queda en silencio hasta que se libere desde el CRM.
-if (state.handoff === true) {
-  return [{ json: { should_send: false, reply: '', reply_delay_seconds, handoff_triggered: false, summary_triggered: false, new_flow_state: state } }];
+// Handoff es COLUMNA dedicada (j.handoff), no flow_state -> n8n nunca la pisa en false.
+// Si un humano tomó el chat, el bot queda en silencio hasta que se libere desde el CRM.
+if (j.handoff === true) {
+  return [{ json: { should_send: false, reply: '', reply_delay_seconds, handoff_triggered: false, summary_triggered: false, new_flow_state: state, patch_body: { flow_state: state } } }];
 }
 
 // Muteado hoy -> silencio total, sin tocar el estado.
 if (state.muted_date && state.muted_date === todayAR) {
-  return [{ json: { should_send: false, reply: '', reply_delay_seconds, handoff_triggered: false, summary_triggered: false, new_flow_state: state } }];
+  return [{ json: { should_send: false, reply: '', reply_delay_seconds, handoff_triggered: false, summary_triggered: false, new_flow_state: state, patch_body: { flow_state: state } } }];
 }
 
 // Esperando la consulta libre (tras elegir "hablar con un representante"):
 // el mensaje actual ES la consulta -> deriva a humano y dispara el resumen.
 if (state.awaiting_query === true) {
   const reply = '¡Gracias! Registramos tu consulta. En breve te atenderá un representante.';
-  const new_flow_state = { ...state, handoff: true, awaiting_query: false, current_menu: null, consulta: text };
-  return [{ json: { should_send: true, reply, reply_delay_seconds, handoff_triggered: true, summary_triggered: true, path: state.path || [], consulta: text, new_flow_state } }];
+  const new_flow_state = { ...state, awaiting_query: false, current_menu: null, consulta: text };
+  return [{ json: { should_send: true, reply, reply_delay_seconds, handoff_triggered: true, summary_triggered: true, path: state.path || [], consulta: text, new_flow_state, patch_body: { flow_state: new_flow_state, handoff: true } } }];
 }
 
 const nodes = flow.nodes || {};
@@ -492,7 +493,6 @@ let current = state.current_menu || null;
 let reply = '';
 let next_menu = current;
 let muted_date = null;
-let handoff = false;
 let handoff_triggered = false;
 let summary_triggered = false;
 let awaiting_query = false;
@@ -523,20 +523,24 @@ if (!current) {
     reply = tNode.message || '';
     path.push(tNode.title || target);   // registra el paso elegido
     if (tNode.await_query) { awaiting_query = true; next_menu = null; }                  // pide la consulta libre (handoff al próximo mensaje)
-    else if (tNode.handoff) { handoff = true; handoff_triggered = true; summary_triggered = true; next_menu = null; }  // derivar a humano (pausa el bot)
+    else if (tNode.handoff) { handoff_triggered = true; summary_triggered = true; next_menu = null; }  // derivar a humano (pausa el bot)
     else if (tNode.mute) { muted_date = todayAR; next_menu = null; }
     else if (tNode.options) { next_menu = target; }            // submenú
     else { next_menu = null; summary_triggered = true; }       // terminal de mensaje predefinido -> resume igual
   }
 }
 
-const new_flow_state = { current_menu: next_menu, muted_date, handoff, awaiting_query, path };
-return [{ json: { should_send: (reply || '').length > 0, reply, reply_delay_seconds, handoff_triggered, summary_triggered, path, new_flow_state } }];`,
+const new_flow_state = { current_menu: next_menu, muted_date, awaiting_query, path };
+// patch_body: escribe flow_state siempre; setea la columna handoff=true SOLO al dispararlo.
+const patch_body = handoff_triggered ? { flow_state: new_flow_state, handoff: true } : { flow_state: new_flow_state };
+return [{ json: { should_send: (reply || '').length > 0, reply, reply_delay_seconds, handoff_triggered, summary_triggered, path, new_flow_state, patch_body } }];`,
   ),
 );
 menuEngine.position = [3500, yM];
 
-// Persiste el estado SIEMPRE (incluso muteado, para guardar muted_date).
+// Persiste el estado SIEMPRE (incluso muteado). patch_body escribe flow_state y,
+// solo cuando el flujo dispara handoff, tambien la columna handoff=true. Nunca
+// escribe handoff=false -> no pisa el "tomar control" del agente en el CRM.
 const patchState = push(
   http(
     "Patch flow_state",
@@ -545,7 +549,7 @@ const patchState = push(
     {
       headers: supaHeaders([{ name: "Prefer", value: "return=minimal" }]),
       jsonBody:
-        "={{ JSON.stringify({ flow_state: $('Menu engine').item.json.new_flow_state }) }}",
+        "={{ JSON.stringify($('Menu engine').item.json.patch_body) }}",
     },
   ),
 );
@@ -577,7 +581,8 @@ const sendMenu = push(
       headers: metaHeaders,
       jsonBody:
         "={{ JSON.stringify({ messaging_product: 'whatsapp', to: $('contact_id').item.json.from, type: 'text', text: { body: $('Menu engine').item.json.reply } }) }}",
-      extra: { onError: "continueRegularOutput" },
+      // Si Meta rechaza -> salida de error (no insertar outbound fantasma).
+      extra: { onError: "continueErrorOutput" },
       options: { batching: { batch: { batchSize: 1, batchInterval: 100 } } },
     },
   ),
@@ -592,11 +597,26 @@ const insertOutboundMenu = push(
     {
       headers: supaHeaders([{ name: "Prefer", value: "return=minimal" }]),
       jsonBody:
-        "={{ JSON.stringify({ tenant_id: $('contact_id').item.json.tenant_id, contact_id: $('contact_id').item.json.contact_id, direction: 'outbound', content: $('Menu engine').item.json.reply, message_type: 'text', sent_at: new Date().toISOString() }) }}",
+        "={{ JSON.stringify({ tenant_id: $('contact_id').item.json.tenant_id, contact_id: $('contact_id').item.json.contact_id, whatsapp_message_id: (($json.messages && $json.messages[0] && $json.messages[0].id) || null), direction: 'outbound', content: $('Menu engine').item.json.reply, message_type: 'text', sent_at: new Date().toISOString() }) }}",
     },
   ),
 );
 insertOutboundMenu.position = [4900, yM];
+
+// Fallo de envío en la rama menú -> failed_messages (no se inserta outbound).
+const logFailedSendMenu = push(
+  http(
+    "Log failed (send menu)",
+    "POST",
+    `=${SUPA}/failed_messages`,
+    {
+      headers: supaHeaders([{ name: "Prefer", value: "return=minimal" }]),
+      jsonBody:
+        "={{ JSON.stringify({ tenant_id: $('contact_id').item.json.tenant_id, contact_phone: $('contact_id').item.json.from, content: $('Menu engine').item.json.reply, error: 'fallo el envio a Meta (menu)' }) }}",
+    },
+  ),
+);
+logFailedSendMenu.position = [5180, yM + 160];
 
 // ----- Sub-rama: resumen IA al derivar a humano (handoff recién disparado) ---
 // Cuando un chat pasa a handoff, Claude resume la conversación y lo deja en
@@ -883,7 +903,8 @@ connect("Menu engine", "Patch flow_state");
 connect("Patch flow_state", "Enviar? (menu)");
 connect("Enviar? (menu)", "Wait delay (menu)", 0); // true -> enviar
 connect("Wait delay (menu)", "Send WhatsApp (menu)");
-connect("Send WhatsApp (menu)", "Insert outbound (menu)");
+connect("Send WhatsApp (menu)", "Insert outbound (menu)", 0); // exito -> outbound
+connect("Send WhatsApp (menu)", "Log failed (send menu)", 1); // error -> failed_messages
 // Sub-rama: resumen IA al cerrar (handoff o terminal de mensaje predefinido)
 connect("Menu engine", "Resumir?"); // fan-out desde el engine
 connect("Resumir?", "Get history (menu)", 0); // true -> resumir

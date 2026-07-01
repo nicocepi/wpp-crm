@@ -16,11 +16,13 @@ export const ATTENTION_LABEL = "Necesita agente";
 /** Nombre de la label de urgencia (la clasifica la IA). */
 export const URGENT_LABEL = "Urgente";
 
-/** Estado de conversación de menú guardado en contacts.flow_state (jsonb). */
+/** Estado de conversación de menú guardado en contacts.flow_state (jsonb).
+ *  Nota: `handoff` NO vive acá — es la columna dedicada contacts.handoff. */
 export type FlowState = {
   current_menu?: string | null;
   muted_date?: string | null;
-  handoff?: boolean;
+  awaiting_query?: boolean;
+  path?: string[];
   urgent?: boolean;
 };
 
@@ -32,9 +34,9 @@ export function readFlowState(contact: Pick<Contact, "flow_state">): FlowState {
     : {};
 }
 
-/** ¿El contacto está derivado a un humano (bot en pausa)? */
-export function isHandoff(contact: Pick<Contact, "flow_state">): boolean {
-  return readFlowState(contact).handoff === true;
+/** ¿El contacto está derivado a un humano (bot en pausa)? Columna dedicada. */
+export function isHandoff(contact: Pick<Contact, "handoff">): boolean {
+  return contact.handoff === true;
 }
 
 /** ¿La consulta del contacto fue clasificada como urgente? */

@@ -8,7 +8,7 @@
         "responseMode": "onReceived",
         "options": {}
       },
-      "id": "823de173-d7ea-437f-80b6-4c96b737519a",
+      "id": "36189c6b-a81e-4a7f-8382-63bd3f4c0f86",
       "name": "Webhook WhatsApp",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
@@ -16,7 +16,7 @@
         280,
         300
       ],
-      "webhookId": "ebe87a95-2c81-4aa1-9942-a390aeeb596e"
+      "webhookId": "6c8c8b9a-bb3b-443b-a9de-b63784af0d64"
     },
     {
       "parameters": {
@@ -29,7 +29,7 @@
           "combinator": "and",
           "conditions": [
             {
-              "id": "6083d701-6515-4e0a-92ca-f02824cb412a",
+              "id": "859d4ed2-c193-4c43-bea6-eeeffe2c6b8f",
               "leftValue": "={{ $json.headers['x-n8n-secret'] }}",
               "rightValue": "={{ $env.N8N_WEBHOOK_SECRET }}",
               "operator": {
@@ -40,7 +40,7 @@
           ]
         }
       },
-      "id": "8c21884d-cc32-47a7-9ce2-d7f3ae871fbf",
+      "id": "73cdd3eb-2e41-41e4-b05d-ef333d8e628c",
       "name": "Secret valido?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
@@ -54,7 +54,7 @@
         "mode": "runOnceForAllItems",
         "jsCode": "const body = $input.first().json.body || {};\nreturn [{ json: {\n  phone_number_id: body.phone_number_id,\n  from: body.from,\n  contact_name: body.contact_name || null,\n  message_id: body.message_id,\n  type: body.type || 'text',\n  text: body.text || '',\n  timestamp: body.timestamp || new Date().toISOString(),\n} }];"
       },
-      "id": "21d06bf2-0cda-46d8-a36a-d60bf2626b25",
+      "id": "b67c214e-2866-4ef1-a924-fa0b777d4fbf",
       "name": "ctx",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -86,7 +86,7 @@
           ]
         }
       },
-      "id": "df6ba7cc-49f5-45de-bcf9-6698aa6ddea2",
+      "id": "4a367cdd-cef9-41bc-98e1-0842120f68be",
       "name": "Resolve tenant",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -100,7 +100,7 @@
         "mode": "runOnceForAllItems",
         "jsCode": "const items = $input.all().map(i => i.json);\nlet tenant = null;\nif (items.length === 1 && Array.isArray(items[0])) tenant = items[0][0] || null;\nelse if (items.length >= 1 && items[0] && items[0].id) tenant = items[0];\nelse if (items.length === 1 && items[0] && Array.isArray(items[0].body)) tenant = items[0].body[0] || null;\nconst ctx = $('ctx').first().json;\nreturn [{ json: { ...ctx, tenant_id: tenant ? tenant.id : null, has_tenant: !!tenant } }];"
       },
-      "id": "bb9d9faf-4362-4ed6-a483-5ba51fc0ecf5",
+      "id": "0fb904b7-a28b-4fbd-991d-5830715969d3",
       "name": "prep",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -120,7 +120,7 @@
           "combinator": "and",
           "conditions": [
             {
-              "id": "e08f6883-7811-4d49-af9b-75e7c22c9716",
+              "id": "40c461c7-3b41-48d0-bbd4-9f4f1d2d3d21",
               "leftValue": "={{ $json.has_tenant }}",
               "rightValue": "",
               "operator": {
@@ -132,7 +132,7 @@
           ]
         }
       },
-      "id": "39b5154a-22c2-4c91-bf7a-83e0a84d4dfb",
+      "id": "2b3e136a-739a-46b2-91e6-f9c1704ee928",
       "name": "Tenant existe?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
@@ -171,7 +171,7 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ tenant_id: $('prep').item.json.tenant_id, phone: $('prep').item.json.from, name: $('prep').item.json.contact_name, last_message_at: $('prep').item.json.timestamp, last_message_preview: $('prep').item.json.text }) }}"
       },
-      "id": "7fcc8851-9191-4472-9acd-c2e8648a3c3c",
+      "id": "d594b62d-cb18-4e1b-9274-32dd7c4d0ada",
       "name": "Upsert contact",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -183,9 +183,9 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "const items = $input.all().map(i => i.json);\nlet row = null;\nif (items.length === 1 && Array.isArray(items[0])) row = items[0][0] || null;\nelse if (items[0] && items[0].id) row = items[0];\nelse if (items[0] && Array.isArray(items[0].body)) row = items[0].body[0] || null;\nconst p = $('prep').first().json;\nreturn [{ json: { ...p, contact_id: row ? row.id : null, flow_state: row ? row.flow_state : {} } }];"
+        "jsCode": "const items = $input.all().map(i => i.json);\nlet row = null;\nif (items.length === 1 && Array.isArray(items[0])) row = items[0][0] || null;\nelse if (items[0] && items[0].id) row = items[0];\nelse if (items[0] && Array.isArray(items[0].body)) row = items[0].body[0] || null;\nconst p = $('prep').first().json;\nreturn [{ json: { ...p, contact_id: row ? row.id : null, flow_state: row ? row.flow_state : {}, handoff: row ? (row.handoff === true) : false } }];"
       },
-      "id": "39153ae3-19f9-4515-829e-9b4f3e94a82d",
+      "id": "6052a586-6545-4c5c-a4f0-9932279deb9d",
       "name": "contact_id",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -224,7 +224,7 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ tenant_id: $('contact_id').item.json.tenant_id, contact_id: $('contact_id').item.json.contact_id, whatsapp_message_id: $('contact_id').item.json.message_id, direction: 'inbound', content: $('contact_id').item.json.text, message_type: $('contact_id').item.json.type, sent_at: $('contact_id').item.json.timestamp }) }}"
       },
-      "id": "244a0fa1-adf5-4432-b13c-af0c93d52929",
+      "id": "d952ec51-2755-4835-bfb6-7eada39ba952",
       "name": "Insert inbound",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -256,7 +256,7 @@
           ]
         }
       },
-      "id": "4f0c1a19-33b3-4fee-a0f5-e4691ecd070b",
+      "id": "950975e0-7742-41b8-9f77-9de0d11f816a",
       "name": "Get bot_config",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -288,7 +288,7 @@
           ]
         }
       },
-      "id": "c691ee80-0f3c-466f-9045-01e22e45d922",
+      "id": "7258355a-ad0c-494c-9751-61cf87c151a0",
       "name": "Get history",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -302,7 +302,7 @@
         "mode": "runOnceForAllItems",
         "jsCode": "function unwrap(json){ if(Array.isArray(json)) return json; if(json && Array.isArray(json.body)) return json.body; if(json && json.id!==undefined) return [json]; return []; }\nconst cfgArr = unwrap($('Get bot_config').first().json);\nconst cfg = cfgArr[0] || { enabled: true, system_prompt: '', reply_delay_seconds: 2 };\nconst hist = unwrap($('Get history').first().json).slice().reverse();\nconst c = $('contact_id').first().json;\n\n// Ventana de 24h: solo respuesta libre si el mensaje entrante es < 24h.\nconst ageMs = Date.now() - new Date(c.timestamp).getTime();\nconst within24h = ageMs < 24*60*60*1000;\nconst can_reply = !!cfg.enabled && within24h;\n\n// Construye el array de messages para Claude (alterna user/assistant).\nconst messages = [];\nfor (const m of hist) {\n  const role = m.direction === 'outbound' ? 'assistant' : 'user';\n  if (m.content) messages.push({ role, content: m.content });\n}\n// Asegura que el ultimo turno sea del user (mensaje actual).\nif (messages.length === 0 || messages[messages.length-1].role !== 'user') {\n  messages.push({ role: 'user', content: c.text });\n}\n\nreturn [{ json: {\n  ...c,\n  enabled: !!cfg.enabled,\n  system_prompt: cfg.system_prompt || 'Sos un asistente de atencion al cliente. Responde breve y amable en espanol.',\n  reply_delay_seconds: cfg.reply_delay_seconds ?? 2,\n  within24h, can_reply, messages,\n} }];"
       },
-      "id": "244357eb-8f33-4f16-88f6-93050109a841",
+      "id": "72631808-8b79-4a8b-9d82-8525219891f6",
       "name": "prep AI",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -337,7 +337,7 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 80, system: [{ type: 'text', text: 'Extrae en UNA frase corta (max 12 palabras) que necesita o pide el contacto. Responde solo la frase, sin comillas.', cache_control: { type: 'ephemeral' } }], messages: [{ role: 'user', content: $('prep AI').item.json.text }] }) }}"
       },
-      "id": "ab0b55f1-e4d4-47d5-9a84-f5031a332b2d",
+      "id": "e2fd532e-0a27-4221-987e-fbfc5816bfaa",
       "name": "Claude extract needs",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -377,7 +377,7 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ needs: (($json.content && $json.content[0] && $json.content[0].text) || '').trim(), status: 'active' }) }}"
       },
-      "id": "8714d00b-2066-488a-86ba-442b9c1576fc",
+      "id": "5d77c8ed-5659-4fe2-9238-64bd4a623c16",
       "name": "Update needs",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -397,7 +397,7 @@
           "combinator": "and",
           "conditions": [
             {
-              "id": "dfab75ec-38cb-4c1e-8e03-f42c39e82abc",
+              "id": "5312f9fc-c846-4cf5-a2bc-1d418f2f2b5c",
               "leftValue": "={{ $('prep AI').item.json.can_reply }}",
               "rightValue": "",
               "operator": {
@@ -409,7 +409,7 @@
           ]
         }
       },
-      "id": "324d2cd7-05eb-44a1-b960-cc610e1b707b",
+      "id": "15668786-4fbb-4a0d-afea-16fe884ff157",
       "name": "Responder?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
@@ -423,7 +423,7 @@
         "amount": "={{ $('prep AI').item.json.reply_delay_seconds }}",
         "unit": "seconds"
       },
-      "id": "84fdb9d0-ca61-4496-96a8-a5a755d117d9",
+      "id": "acf996f8-ce38-42c4-b3fe-e766f3ae2f51",
       "name": "Wait delay",
       "type": "n8n-nodes-base.wait",
       "typeVersion": 1.1,
@@ -431,7 +431,7 @@
         3920,
         460
       ],
-      "webhookId": "3ac32581-ea25-482f-b2b4-7c1699c2fce2"
+      "webhookId": "957aee83-2dc7-451e-bbb0-ae8be047db15"
     },
     {
       "parameters": {
@@ -459,7 +459,7 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 500, system: [{ type: 'text', text: $('prep AI').item.json.system_prompt, cache_control: { type: 'ephemeral' } }], messages: $('prep AI').item.json.messages }) }}"
       },
-      "id": "1ef9a7b0-b3c0-4b0b-8112-c7d9ae587be3",
+      "id": "a43c7fa6-6d15-4b25-9e95-af9e5705d884",
       "name": "Claude reply",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -497,7 +497,7 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ messaging_product: 'whatsapp', to: $('prep AI').item.json.from, type: 'text', text: { body: (($json.content && $json.content[0] && $json.content[0].text) || '').trim() } }) }}"
       },
-      "id": "512ff261-28ad-4c33-a650-959527971e0f",
+      "id": "8eeb26f0-0093-4d15-b3df-78db2933b9be",
       "name": "Send WhatsApp",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -535,9 +535,9 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ tenant_id: $('prep AI').item.json.tenant_id, contact_id: $('prep AI').item.json.contact_id, direction: 'outbound', content: (($('Claude reply').item.json.content && $('Claude reply').item.json.content[0] && $('Claude reply').item.json.content[0].text) || '').trim(), message_type: 'text', sent_at: new Date().toISOString() }) }}"
+        "jsonBody": "={{ JSON.stringify({ tenant_id: $('prep AI').item.json.tenant_id, contact_id: $('prep AI').item.json.contact_id, whatsapp_message_id: (($json.messages && $json.messages[0] && $json.messages[0].id) || null), direction: 'outbound', content: (($('Claude reply').item.json.content && $('Claude reply').item.json.content[0] && $('Claude reply').item.json.content[0].text) || '').trim(), message_type: 'text', sent_at: new Date().toISOString() }) }}"
       },
-      "id": "94eef9a9-978f-4456-b479-d048e06ed2f9",
+      "id": "0a5e3382-9728-4e30-a685-e25eb03c33df",
       "name": "Insert outbound",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -576,7 +576,7 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ tenant_id: $('prep AI').item.json.tenant_id, contact_phone: $('prep AI').item.json.from, content: $('prep AI').item.json.text, error: $('prep AI').item.json.enabled ? 'fuera de ventana 24h' : 'bot deshabilitado' }) }}"
       },
-      "id": "a3a0bc23-4889-4d91-aedf-43551a191baa",
+      "id": "5b89640c-70b4-4c84-b47e-acd5d675bf36",
       "name": "Log failed (ventana)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -615,7 +615,7 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ tenant_id: $('prep AI').item.json.tenant_id, contact_phone: $('prep AI').item.json.from, content: 'respuesta IA', error: 'fallo el envio a Meta' }) }}"
       },
-      "id": "d7624ffb-1d58-4de6-8df7-02b0a6a9fe45",
+      "id": "5ded0d2b-fa02-4ede-a2cc-3bfe2f0c465d",
       "name": "Log failed (send)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -629,7 +629,7 @@
         "mode": "runOnceForAllItems",
         "jsCode": "function unwrap(json){ if(Array.isArray(json)) return json; if(json && Array.isArray(json.body)) return json.body; if(json && typeof json === 'object') return [json]; return []; }\nconst cfgArr = unwrap($('Get bot_config').first().json);\nconst cfg = cfgArr[0] || {};\nconst c = $('contact_id').first().json;\nreturn [{ json: { ...c,\n  flow_type: cfg.flow_type || 'ai',\n  flow_definition: cfg.flow_definition || null,\n  enabled: cfg.enabled !== false,\n  system_prompt: cfg.system_prompt || '',\n  reply_delay_seconds: cfg.reply_delay_seconds ?? 2,\n} }];"
       },
-      "id": "22084776-f871-4a81-b8e6-7cb2e972a771",
+      "id": "4620ef32-6eac-43c9-95b2-d64dc52893d7",
       "name": "bot cfg",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -649,7 +649,7 @@
           "combinator": "and",
           "conditions": [
             {
-              "id": "a830d789-3ee6-47d9-9364-e54af55f42fa",
+              "id": "3acb1c88-ed6a-42fd-8e0f-861aa423db14",
               "leftValue": "={{ $json.flow_type }}",
               "rightValue": "menu",
               "operator": {
@@ -660,7 +660,7 @@
           ]
         }
       },
-      "id": "28854cc0-4068-434b-9046-8f7f71538a4a",
+      "id": "cff1fe71-1b13-4194-9ef7-78a0c5990e12",
       "name": "Modo menu?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
@@ -672,9 +672,9 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "const j = $('bot cfg').first().json;\nconst flow = j.flow_definition || { start: 'root', nodes: {}, invalid_message: 'Opción no válida.' };\nconst state = (j.flow_state && typeof j.flow_state === 'object') ? j.flow_state : {};\nconst text = (j.text || '').toString();\nconst reply_delay_seconds = j.reply_delay_seconds ?? 1;\n\n// Fecha local AR para el mute \"resto del día\" (auto-resetea al día siguiente).\nconst todayAR = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date());\n\n// Handoff: un humano tomó el chat -> el bot queda en silencio hasta que se libere desde el CRM.\nif (state.handoff === true) {\n  return [{ json: { should_send: false, reply: '', reply_delay_seconds, handoff_triggered: false, summary_triggered: false, new_flow_state: state } }];\n}\n\n// Muteado hoy -> silencio total, sin tocar el estado.\nif (state.muted_date && state.muted_date === todayAR) {\n  return [{ json: { should_send: false, reply: '', reply_delay_seconds, handoff_triggered: false, summary_triggered: false, new_flow_state: state } }];\n}\n\n// Esperando la consulta libre (tras elegir \"hablar con un representante\"):\n// el mensaje actual ES la consulta -> deriva a humano y dispara el resumen.\nif (state.awaiting_query === true) {\n  const reply = '¡Gracias! Registramos tu consulta. En breve te atenderá un representante.';\n  const new_flow_state = { ...state, handoff: true, awaiting_query: false, current_menu: null, consulta: text };\n  return [{ json: { should_send: true, reply, reply_delay_seconds, handoff_triggered: true, summary_triggered: true, path: state.path || [], consulta: text, new_flow_state } }];\n}\n\nconst nodes = flow.nodes || {};\nconst m = text.match(/\\d+/);\nconst num = m ? m[0] : null;\nlet current = state.current_menu || null;\nlet reply = '';\nlet next_menu = current;\nlet muted_date = null;\nlet handoff = false;\nlet handoff_triggered = false;\nlet summary_triggered = false;\nlet awaiting_query = false;\n// Recorrido del menú en esta sesión (títulos de los nodos visitados).\nlet path = Array.isArray(state.path) ? state.path.slice() : [];\n\nif (!current) {\n  // Inicio de sesión: bienvenida (ignora lo tipeado). Reinicia el recorrido.\n  const startNode = nodes[flow.start] || { message: '' };\n  reply = startNode.message || '';\n  next_menu = flow.start;\n  path = [];\n} else {\n  const curNode = nodes[current] || { options: {} };\n  const opts = curNode.options || {};\n  const target = (num !== null && Object.prototype.hasOwnProperty.call(opts, num)) ? opts[num] : null;\n  if (!target) {\n    // Opción inválida: queda en el mismo menú.\n    reply = flow.invalid_message || 'Opción no válida.';\n    next_menu = current;\n  } else if (target === flow.start) {\n    // \"Volver a empezar\": reinicia el recorrido.\n    reply = (nodes[target] && nodes[target].message) || '';\n    next_menu = flow.start;\n    path = [];\n  } else {\n    const tNode = nodes[target] || { message: '' };\n    reply = tNode.message || '';\n    path.push(tNode.title || target);   // registra el paso elegido\n    if (tNode.await_query) { awaiting_query = true; next_menu = null; }                  // pide la consulta libre (handoff al próximo mensaje)\n    else if (tNode.handoff) { handoff = true; handoff_triggered = true; summary_triggered = true; next_menu = null; }  // derivar a humano (pausa el bot)\n    else if (tNode.mute) { muted_date = todayAR; next_menu = null; }\n    else if (tNode.options) { next_menu = target; }            // submenú\n    else { next_menu = null; summary_triggered = true; }       // terminal de mensaje predefinido -> resume igual\n  }\n}\n\nconst new_flow_state = { current_menu: next_menu, muted_date, handoff, awaiting_query, path };\nreturn [{ json: { should_send: (reply || '').length > 0, reply, reply_delay_seconds, handoff_triggered, summary_triggered, path, new_flow_state } }];"
+        "jsCode": "const j = $('bot cfg').first().json;\nconst flow = j.flow_definition || { start: 'root', nodes: {}, invalid_message: 'Opción no válida.' };\nconst state = (j.flow_state && typeof j.flow_state === 'object') ? j.flow_state : {};\nconst text = (j.text || '').toString();\nconst reply_delay_seconds = j.reply_delay_seconds ?? 1;\n\n// Fecha local AR para el mute \"resto del día\" (auto-resetea al día siguiente).\nconst todayAR = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date());\n\n// Handoff es COLUMNA dedicada (j.handoff), no flow_state -> n8n nunca la pisa en false.\n// Si un humano tomó el chat, el bot queda en silencio hasta que se libere desde el CRM.\nif (j.handoff === true) {\n  return [{ json: { should_send: false, reply: '', reply_delay_seconds, handoff_triggered: false, summary_triggered: false, new_flow_state: state, patch_body: { flow_state: state } } }];\n}\n\n// Muteado hoy -> silencio total, sin tocar el estado.\nif (state.muted_date && state.muted_date === todayAR) {\n  return [{ json: { should_send: false, reply: '', reply_delay_seconds, handoff_triggered: false, summary_triggered: false, new_flow_state: state, patch_body: { flow_state: state } } }];\n}\n\n// Esperando la consulta libre (tras elegir \"hablar con un representante\"):\n// el mensaje actual ES la consulta -> deriva a humano y dispara el resumen.\nif (state.awaiting_query === true) {\n  const reply = '¡Gracias! Registramos tu consulta. En breve te atenderá un representante.';\n  const new_flow_state = { ...state, awaiting_query: false, current_menu: null, consulta: text };\n  return [{ json: { should_send: true, reply, reply_delay_seconds, handoff_triggered: true, summary_triggered: true, path: state.path || [], consulta: text, new_flow_state, patch_body: { flow_state: new_flow_state, handoff: true } } }];\n}\n\nconst nodes = flow.nodes || {};\nconst m = text.match(/\\d+/);\nconst num = m ? m[0] : null;\nlet current = state.current_menu || null;\nlet reply = '';\nlet next_menu = current;\nlet muted_date = null;\nlet handoff_triggered = false;\nlet summary_triggered = false;\nlet awaiting_query = false;\n// Recorrido del menú en esta sesión (títulos de los nodos visitados).\nlet path = Array.isArray(state.path) ? state.path.slice() : [];\n\nif (!current) {\n  // Inicio de sesión: bienvenida (ignora lo tipeado). Reinicia el recorrido.\n  const startNode = nodes[flow.start] || { message: '' };\n  reply = startNode.message || '';\n  next_menu = flow.start;\n  path = [];\n} else {\n  const curNode = nodes[current] || { options: {} };\n  const opts = curNode.options || {};\n  const target = (num !== null && Object.prototype.hasOwnProperty.call(opts, num)) ? opts[num] : null;\n  if (!target) {\n    // Opción inválida: queda en el mismo menú.\n    reply = flow.invalid_message || 'Opción no válida.';\n    next_menu = current;\n  } else if (target === flow.start) {\n    // \"Volver a empezar\": reinicia el recorrido.\n    reply = (nodes[target] && nodes[target].message) || '';\n    next_menu = flow.start;\n    path = [];\n  } else {\n    const tNode = nodes[target] || { message: '' };\n    reply = tNode.message || '';\n    path.push(tNode.title || target);   // registra el paso elegido\n    if (tNode.await_query) { awaiting_query = true; next_menu = null; }                  // pide la consulta libre (handoff al próximo mensaje)\n    else if (tNode.handoff) { handoff_triggered = true; summary_triggered = true; next_menu = null; }  // derivar a humano (pausa el bot)\n    else if (tNode.mute) { muted_date = todayAR; next_menu = null; }\n    else if (tNode.options) { next_menu = target; }            // submenú\n    else { next_menu = null; summary_triggered = true; }       // terminal de mensaje predefinido -> resume igual\n  }\n}\n\nconst new_flow_state = { current_menu: next_menu, muted_date, awaiting_query, path };\n// patch_body: escribe flow_state siempre; setea la columna handoff=true SOLO al dispararlo.\nconst patch_body = handoff_triggered ? { flow_state: new_flow_state, handoff: true } : { flow_state: new_flow_state };\nreturn [{ json: { should_send: (reply || '').length > 0, reply, reply_delay_seconds, handoff_triggered, summary_triggered, path, new_flow_state, patch_body } }];"
       },
-      "id": "492920ca-a157-4f65-a248-83edd08db849",
+      "id": "0abf848d-b6c5-4147-9e16-534300c7508d",
       "name": "Menu engine",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -711,9 +711,9 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ flow_state: $('Menu engine').item.json.new_flow_state }) }}"
+        "jsonBody": "={{ JSON.stringify($('Menu engine').item.json.patch_body) }}"
       },
-      "id": "7a40b9d5-81ac-4279-b5bc-e6ef64f5ffbf",
+      "id": "fa71a50b-78cc-4e7c-8da1-34d7055cf53b",
       "name": "Patch flow_state",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -733,7 +733,7 @@
           "combinator": "and",
           "conditions": [
             {
-              "id": "953379f2-64a0-477f-a2d2-5ddf463e1d95",
+              "id": "dedb3bfc-3a99-4e77-a658-d195c2463eab",
               "leftValue": "={{ $('Menu engine').item.json.should_send }}",
               "rightValue": "",
               "operator": {
@@ -745,7 +745,7 @@
           ]
         }
       },
-      "id": "dd7a251f-3f42-40c8-b2d7-4edefdc42d80",
+      "id": "d004ce2b-247b-458a-8797-3f105148069e",
       "name": "Enviar? (menu)",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
@@ -759,7 +759,7 @@
         "amount": "={{ $('Menu engine').item.json.reply_delay_seconds }}",
         "unit": "seconds"
       },
-      "id": "e8d610e7-5848-4171-8c60-6e1d41eaa26f",
+      "id": "8920462a-1284-4342-9181-20063b2d22d2",
       "name": "Wait delay (menu)",
       "type": "n8n-nodes-base.wait",
       "typeVersion": 1.1,
@@ -767,7 +767,7 @@
         4340,
         760
       ],
-      "webhookId": "1005603c-6ba8-49be-b629-3e2983542586"
+      "webhookId": "e7e38dcf-f0e8-4c1d-9de5-55ed5e1204ae"
     },
     {
       "parameters": {
@@ -798,7 +798,7 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ messaging_product: 'whatsapp', to: $('contact_id').item.json.from, type: 'text', text: { body: $('Menu engine').item.json.reply } }) }}"
       },
-      "id": "0ad4bb9e-28cd-4578-b2cb-6cb6fa461067",
+      "id": "cf53bbd7-d76c-4f3e-858b-b3df2936a64a",
       "name": "Send WhatsApp (menu)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -806,7 +806,7 @@
         4620,
         760
       ],
-      "onError": "continueRegularOutput"
+      "onError": "continueErrorOutput"
     },
     {
       "parameters": {
@@ -836,15 +836,54 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ tenant_id: $('contact_id').item.json.tenant_id, contact_id: $('contact_id').item.json.contact_id, direction: 'outbound', content: $('Menu engine').item.json.reply, message_type: 'text', sent_at: new Date().toISOString() }) }}"
+        "jsonBody": "={{ JSON.stringify({ tenant_id: $('contact_id').item.json.tenant_id, contact_id: $('contact_id').item.json.contact_id, whatsapp_message_id: (($json.messages && $json.messages[0] && $json.messages[0].id) || null), direction: 'outbound', content: $('Menu engine').item.json.reply, message_type: 'text', sent_at: new Date().toISOString() }) }}"
       },
-      "id": "6994842d-5c9d-406e-8cd0-01c7a6527c76",
+      "id": "fc4e7803-2bda-4dae-a4e5-d7406208ecb7",
       "name": "Insert outbound (menu)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
         4900,
         760
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/failed_messages",
+        "options": {},
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ tenant_id: $('contact_id').item.json.tenant_id, contact_phone: $('contact_id').item.json.from, content: $('Menu engine').item.json.reply, error: 'fallo el envio a Meta (menu)' }) }}"
+      },
+      "id": "877ce54e-f305-4f58-bf64-4c0c7a0ea7ab",
+      "name": "Log failed (send menu)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5180,
+        920
       ]
     },
     {
@@ -858,7 +897,7 @@
           "combinator": "and",
           "conditions": [
             {
-              "id": "02bf9124-573b-415a-b120-af56c7e007d3",
+              "id": "d18b05c1-3500-4a53-8d97-9819a9e62aa9",
               "leftValue": "={{ $('Menu engine').item.json.summary_triggered }}",
               "rightValue": "",
               "operator": {
@@ -870,7 +909,7 @@
           ]
         }
       },
-      "id": "e9cd3455-0737-4941-841b-86982af83298",
+      "id": "e3719d62-9fbb-4e8d-894f-c7b0f61c563b",
       "name": "Resumir?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
@@ -902,7 +941,7 @@
           ]
         }
       },
-      "id": "261e387b-eac6-4dbe-a434-990f8524a71e",
+      "id": "f7e6f78a-f4a5-4a14-9a4a-f77d6a67e5c5",
       "name": "Get history (menu)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -916,7 +955,7 @@
         "mode": "runOnceForAllItems",
         "jsCode": "function unwrap(json){ if(Array.isArray(json)) return json; if(json && Array.isArray(json.body)) return json.body; if(json && typeof json === 'object') return [json]; return []; }\nconst me = $('Menu engine').first().json;\nconst path = Array.isArray(me.path) ? me.path : [];\nconst pathStr = path.join(' → ');\nconst consulta = (me.consulta || '').toString().trim();\n// Comentarios en texto libre del contacto (no simples números de opción).\nconst hist = unwrap($('Get history (menu)').first().json).slice().reverse();\nconst comments = hist.filter(m => m.direction === 'inbound' && m.content && !/^\\s*\\d+\\s*$/.test(m.content)).map(m => m.content);\nconst extra = comments.length ? ('\\nMensajes en texto del contacto: ' + comments.join(' | ')) : '';\nlet convo = 'Pasos del menú que recorrió: ' + (pathStr || '(ninguno)');\nif (consulta) convo += '\\nConsulta que escribió: ' + consulta;\nconvo += extra;\nreturn [{ json: { convo, pathStr, consulta } }];"
       },
-      "id": "c891630e-2a5e-4229-a496-8412fb28e120",
+      "id": "472a5d1e-d3f9-4394-9b54-998e5aafb0fa",
       "name": "prep summary",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -951,7 +990,7 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 150, system: [{ type: 'text', text: 'Sos asistente de una administración de consorcios. El contacto usó un menú de WhatsApp. A partir de los pasos del menú y, si la hay, la consulta que escribió, devolvé SOLO un JSON válido (sin texto extra ni markdown) con la forma {\\\"urgente\\\": true|false, \\\"resumen\\\": \\\"...\\\"}. El campo resumen: 1 o 2 frases en español de qué consultó o necesita, para que un agente lo retome; priorizá la consulta escrita y mencioná los pasos; sé específico; NO escribas solo que espera ser atendido. El campo urgente: true SOLO si refleja una urgencia real (fuga de gas, inundación, incendio, ascensor con personas atrapadas, falta de un servicio esencial, riesgo a personas o bienes); si no, false.', cache_control: { type: 'ephemeral' } }], messages: [{ role: 'user', content: $('prep summary').item.json.convo }] }) }}"
       },
-      "id": "bce75853-f862-4e4f-a1b6-2ee3810f4f59",
+      "id": "2fbbf64f-769f-4b93-a0db-b0307372abff",
       "name": "Claude summary",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -966,7 +1005,7 @@
         "mode": "runOnceForAllItems",
         "jsCode": "const c = $('Claude summary').first().json;\nconst raw = ((c.content && c.content[0] && c.content[0].text) || '').trim();\nlet urgente = false;\nlet resumen = '';\ntry {\n  const m = raw.match(/\\{[\\s\\S]*\\}/);\n  const obj = JSON.parse(m ? m[0] : raw);\n  if (typeof obj.urgente === 'boolean') urgente = obj.urgente;\n  if (obj.resumen) resumen = String(obj.resumen).trim();\n} catch (e) {\n  resumen = raw; // si no vino JSON, usar el texto crudo\n}\nif (!resumen) {\n  const ps = $('prep summary').first().json;\n  resumen = (ps.consulta ? ('Consulta: ' + ps.consulta + '. ') : '') + 'Pasos: ' + (ps.pathStr || 'sin registrar');\n}\nreturn [{ json: { resumen, urgente } }];"
       },
-      "id": "9401a210-dc78-4fab-9b2f-120d2b571527",
+      "id": "7fdefa44-3afa-4d16-85d4-38ed7b943b46",
       "name": "parse result",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1005,7 +1044,7 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ needs: $('parse result').item.json.resumen, status: 'active' }) }}"
       },
-      "id": "f1194c4e-6176-4e3b-9288-10e2f0c5e0f3",
+      "id": "f7cad1fb-b948-4ae9-a87f-d6fe16037320",
       "name": "Update needs (menu)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1025,7 +1064,7 @@
           "combinator": "and",
           "conditions": [
             {
-              "id": "00abc078-7337-43ce-a252-2e31270a754c",
+              "id": "42d2ddab-4fb8-48d4-9cc7-1f7d1f494dc2",
               "leftValue": "={{ $('Menu engine').item.json.handoff_triggered }}",
               "rightValue": "",
               "operator": {
@@ -1037,7 +1076,7 @@
           ]
         }
       },
-      "id": "adfaf604-90f4-4e60-a64d-78d4e31474cf",
+      "id": "2c8bcddb-be79-4fab-9343-a78d43ab2f90",
       "name": "Handoff?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
@@ -1069,7 +1108,7 @@
           ]
         }
       },
-      "id": "c8718e90-2f25-4d2c-9f03-3cf8f5c4d8a7",
+      "id": "071a9164-0608-478b-88d6-9036b2c40d55",
       "name": "Get attention label",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1083,7 +1122,7 @@
         "mode": "runOnceForAllItems",
         "jsCode": "function unwrap(json){ if(Array.isArray(json)) return json; if(json && Array.isArray(json.body)) return json.body; if(json && typeof json === 'object') return [json]; return []; }\nconst rows = unwrap($('Get attention label').first().json);\nconst label_id = rows[0] && rows[0].id ? rows[0].id : null;\nreturn [{ json: { label_id, contact_id: $('contact_id').first().json.contact_id } }];"
       },
-      "id": "c60cc644-143e-4258-8bb3-c8e8cf22a4ae",
+      "id": "5264ec64-3d7f-4710-8d84-93b73d55310c",
       "name": "attn label id",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1122,7 +1161,7 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ contact_id: $('attn label id').item.json.contact_id, label_id: $('attn label id').item.json.label_id }) }}"
       },
-      "id": "aebb693e-1974-4c07-9963-c218c7c333c8",
+      "id": "5528dd1b-f2e7-4c01-9d3f-ee0984190553",
       "name": "Link attention label",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1143,7 +1182,7 @@
           "combinator": "and",
           "conditions": [
             {
-              "id": "7e8fb2dc-d5db-4ea3-bd3d-14799b1f6478",
+              "id": "7a810760-ace9-43fa-bc10-ccce9481eb44",
               "leftValue": "={{ $('parse result').item.json.urgente }}",
               "rightValue": "",
               "operator": {
@@ -1155,7 +1194,7 @@
           ]
         }
       },
-      "id": "628f39ee-eb88-449b-94a7-7d8086b545b6",
+      "id": "f44b7079-e460-4a19-84f1-1f63a93c6737",
       "name": "Urgente?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
@@ -1194,7 +1233,7 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ flow_state: Object.assign({}, $('Menu engine').item.json.new_flow_state, { urgent: true }) }) }}"
       },
-      "id": "91761a1e-522a-4d2b-a900-fa7b1b10fd23",
+      "id": "103304a5-e0a3-4e0a-8c22-e0fdb0617f0f",
       "name": "Set urgent flag",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1226,7 +1265,7 @@
           ]
         }
       },
-      "id": "e3a6dd18-adde-473a-83f8-1e7794f994ba",
+      "id": "dffb7cb6-064f-48a5-b72c-ed9e1edbd9dd",
       "name": "Get urgent label",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1240,7 +1279,7 @@
         "mode": "runOnceForAllItems",
         "jsCode": "function unwrap(json){ if(Array.isArray(json)) return json; if(json && Array.isArray(json.body)) return json.body; if(json && typeof json === 'object') return [json]; return []; }\nconst rows = unwrap($('Get urgent label').first().json);\nconst label_id = rows[0] && rows[0].id ? rows[0].id : null;\nreturn [{ json: { label_id, contact_id: $('contact_id').first().json.contact_id } }];"
       },
-      "id": "e5ff2e52-31b9-4ded-af86-40330de2d142",
+      "id": "035d1e31-324b-4c4d-a80f-0255f78fe2a5",
       "name": "urgent label id",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1279,7 +1318,7 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ contact_id: $('urgent label id').item.json.contact_id, label_id: $('urgent label id').item.json.label_id }) }}"
       },
-      "id": "9a6390d0-5d06-4dfc-a662-389d261fed41",
+      "id": "7bdf693f-c9fb-4902-b6c7-abacc477c5d5",
       "name": "Link urgent label",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1319,7 +1358,7 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ tenant_id: $('contact_id').item.json.tenant_id, contact_id: $('contact_id').item.json.contact_id, phone: $('contact_id').item.json.from, source: 'n8n', level: 'info', event: 'menu_decision', message: ($('Menu engine').item.json.reply || '').slice(0, 300), data: { text: $('contact_id').item.json.text, path: $('Menu engine').item.json.path, next_menu: $('Menu engine').item.json.new_flow_state.current_menu, handoff: $('Menu engine').item.json.new_flow_state.handoff, awaiting_query: $('Menu engine').item.json.new_flow_state.awaiting_query, should_send: $('Menu engine').item.json.should_send, handoff_triggered: $('Menu engine').item.json.handoff_triggered, summary_triggered: $('Menu engine').item.json.summary_triggered } }) }}"
       },
-      "id": "0c21b235-d1a0-48d5-b4c0-1ce4328c2d1f",
+      "id": "3775518e-dcfc-400e-9d67-8d831441e678",
       "name": "Log flow (menu)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1359,7 +1398,7 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ tenant_id: $('prep AI').item.json.tenant_id, contact_id: $('prep AI').item.json.contact_id, phone: $('prep AI').item.json.from, source: 'n8n', level: ($('prep AI').item.json.can_reply ? 'info' : 'warn'), event: 'ai_reply', message: ($('prep AI').item.json.text || '').slice(0, 300), data: { text: $('prep AI').item.json.text, within24h: $('prep AI').item.json.within24h, can_reply: $('prep AI').item.json.can_reply, enabled: $('prep AI').item.json.enabled } }) }}"
       },
-      "id": "1c707ce4-e34a-4c53-bd04-ea55f65a2d6f",
+      "id": "fe0ec869-784f-4c39-a488-eeab48812386",
       "name": "Log flow (ai)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1376,7 +1415,7 @@
         "width": 360,
         "color": 4
       },
-      "id": "05a8650c-0d37-457c-aa45-7253730549be",
+      "id": "21802562-a417-4fd2-a01d-10463100b69f",
       "name": "Notas",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
@@ -1596,6 +1635,13 @@
         [
           {
             "node": "Insert outbound (menu)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log failed (send menu)",
             "type": "main",
             "index": 0
           }
