@@ -8,6 +8,24 @@ import { forwardToN8n } from "./n8n";
 const app = express();
 const deduper = new Deduper();
 
+/** Log estructurado (una línea JSON por evento, greppable en el host). */
+function log(
+  level: "info" | "warn" | "error",
+  event: string,
+  data: Record<string, unknown> = {},
+) {
+  const line = JSON.stringify({
+    ts: new Date().toISOString(),
+    svc: "webhook",
+    level,
+    event,
+    ...data,
+  });
+  if (level === "error") console.error(line);
+  else if (level === "warn") console.warn(line);
+  else console.log(line);
+}
+
 // Captura el raw body (necesario para validar la firma HMAC) y a la vez parsea JSON.
 app.use(
   express.json({
@@ -42,7 +60,7 @@ app.post("/webhook", (req: Request, res: Response) => {
   const signature = req.header("x-hub-signature-256");
 
   if (!rawBody || !isValidSignature(rawBody, signature, config.appSecret)) {
-    console.warn("[webhook] firma invalida -> 403");
+    log("warn", "signature_invalid", { hasBody: Boolean(rawBody) });
     res.sendStatus(403);
     return;
   }
@@ -55,17 +73,20 @@ app.post("/webhook", (req: Request, res: Response) => {
 
   for (const event of events) {
     if (deduper.isDuplicate(event.message_id)) {
-      console.log(`[webhook] duplicado ignorado message_id=${event.message_id}`);
+      log("info", "duplicate_ignored", { message_id: event.message_id });
       continue;
     }
-    console.log(
-      `[webhook] ${event.type} de ${event.from} (phone_number_id=${event.phone_number_id}) -> n8n`,
-    );
+    log("info", "forward_n8n", {
+      type: event.type,
+      from: event.from,
+      phone_number_id: event.phone_number_id,
+      message_id: event.message_id,
+    });
     // Fire-and-forget: no bloquea el ack ya enviado.
     void forwardToN8n(event);
   }
 });
 
 app.listen(config.port, () => {
-  console.log(`[webhook] escuchando en puerto ${config.port}`);
+  log("info", "listening", { port: config.port });
 });

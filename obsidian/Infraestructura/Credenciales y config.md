@@ -34,6 +34,16 @@
 | `WHATSAPP_GRAPH_VERSION` | Versión de Graph API (ej. `v21.0`). |
 | `SUPABASE_SERVICE_ROLE_KEY` | **Server-only.** Para el ABM de usuarios (Auth admin API). Solo se usa detrás de `isAdmin()`. Mismo valor que `n8n/.env`. |
 
+## Email de Auth (magic links) — SMTP propio
+Los emails de Auth (magic links del login) salen por un **SMTP propio** configurado en
+Supabase → Authentication → SMTP Settings (Enable Custom SMTP), con un dominio propio.
+- Evita el rate limit del email built-in de Supabase (~2-4/h, solo dev) → permite dar de
+  alta usuarios sin chocar el límite.
+- Deliverability: el dominio de envío tiene SPF/DKIM/DMARC.
+- Solo afecta a los correos de Auth de Supabase; no toca WhatsApp ni n8n.
+- Tras habilitarlo conviene subir el rate limit en Authentication → Rate Limits.
+- Verificado funcionando (2026-07-01).
+
 ## Supabase — datos clave del tenant demo
 - Proyecto ref: `nimdkfnkvhjzwybalfex`
 - Tenant demo `id`: `00000000-0000-0000-0000-0000000000a1` ("Empresa Demo")

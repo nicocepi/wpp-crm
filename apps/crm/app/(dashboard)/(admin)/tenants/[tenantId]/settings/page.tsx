@@ -4,6 +4,7 @@ import { ArrowLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { BotConfigForm } from "@/components/settings/bot-config-form";
 import { Button } from "@/components/ui/button";
+import { LogoUploader } from "./logo-uploader";
 import type { BotConfig } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -17,7 +18,7 @@ export default async function TenantSettingsPage({
 
   const { data: tenant } = await supabase
     .from("tenants")
-    .select("id, name")
+    .select("id, name, logo_url")
     .eq("id", params.tenantId)
     .maybeSingle();
 
@@ -37,9 +38,14 @@ export default async function TenantSettingsPage({
         </Link>
       </Button>
       <div className="mb-6">
-        <h1 className="text-xl font-semibold">Configuración del bot</h1>
+        <h1 className="text-xl font-semibold">Configuración del tenant</h1>
         <p className="text-sm text-muted-foreground">Tenant: {tenant.name}</p>
       </div>
+
+      <div className="mb-6 rounded-lg border p-4">
+        <LogoUploader tenantId={tenant.id} logoUrl={tenant.logo_url} />
+      </div>
+
       <BotConfigForm
         config={(config as BotConfig | null) ?? null}
         tenantId={tenant.id}

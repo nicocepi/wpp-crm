@@ -17,7 +17,9 @@
 - **Roles member/admin** (probado): el member ve solo Contactos; el admin ve **Tenants** + **Estadísticas** (sin Contactos propios) y edita la config de cada tenant. RLS con `OR is_admin()`. Ver [[Decisiones/Roles y vistas de admin]].
 - **ABM de usuarios por tenant** (probado): el admin da de alta/baja y lista usuarios de cada tenant (`/tenants/[id]/usuarios`), con cliente service role server-only detrás de `isAdmin()`.
 - **Impersonación** (probado): el admin "ingresa como" un tenant y ve/usa la vista member, con banner para salir (cookie `act_as_tenant`, sin forjar sesión).
-- **Repo en GitHub**: https://github.com/nicocepi/wpp-crm (rama main). ⚠️ Los cambios de ABM/impersonación aún **no están pusheados**.
+- **Logo por tenant**: el admin sube el logo en la config del tenant (Storage `tenant-logos`) y se ve en el sidebar del panel del member. Ver [[Decisiones/Logo por tenant]].
+- **Logging/observabilidad**: conversaciones en `messages`, errores en `failed_messages`, y un log durable `event_logs` (n8n escribe decisiones del flujo). Webhook con logs JSON. Sección **Logs** (admin) con filtros. Ver [[Decisiones/Logging y observabilidad]].
+- **Repo en GitHub**: https://github.com/nicocepi/wpp-crm (rama main). ⚠️ Los cambios de logo por tenant aún **no están pusheados**.
 - **Builds** de ambas apps sin errores TypeScript.
 
 ## Usuarios
@@ -36,8 +38,8 @@
 - Token: **permanente**, validado (ver [[Decisiones/Verificación del token de Meta]]).
 
 ## Qué falta / pendiente
-- **Correr `supabase/users-admin.sql`** (tenant_id nullable + nlopez sin tenant). Hoy funciona igual, pero el admin sigue ligado a RQ hasta correrlo.
-- Pushear a GitHub los cambios de ABM de usuarios + impersonación.
+- **Correr `supabase/event-logs.sql`** (tabla `event_logs`). Hasta entonces `/logs` va vacío y los logs de n8n fallan silenciosos.
+- Pushear a GitHub los cambios de logo por tenant + logging.
 - Reemplazar placeholders del flujo de RQ (opciones 8–11 y teléfonos 12–15).
 - Deploy productivo: CRM a Vercel, webhook a un host Node, n8n a VPS.
 - Reemplazar ngrok por un dominio estable para el webhook.

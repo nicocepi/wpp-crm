@@ -124,6 +124,45 @@ export type Database = {
           },
         ]
       }
+      event_logs: {
+        Row: {
+          contact_id: string | null
+          created_at: string | null
+          data: Json | null
+          event: string
+          id: string
+          level: string
+          message: string | null
+          phone: string | null
+          source: string
+          tenant_id: string | null
+        }
+        Insert: {
+          contact_id?: string | null
+          created_at?: string | null
+          data?: Json | null
+          event: string
+          id?: string
+          level?: string
+          message?: string | null
+          phone?: string | null
+          source?: string
+          tenant_id?: string | null
+        }
+        Update: {
+          contact_id?: string | null
+          created_at?: string | null
+          data?: Json | null
+          event?: string
+          id?: string
+          level?: string
+          message?: string | null
+          phone?: string | null
+          source?: string
+          tenant_id?: string | null
+        }
+        Relationships: []
+      }
       failed_messages: {
         Row: {
           contact_phone: string | null
@@ -272,18 +311,21 @@ export type Database = {
         Row: {
           created_at: string | null
           id: string
+          logo_url: string | null
           name: string
           whatsapp_phone_id: string
         }
         Insert: {
           created_at?: string | null
           id?: string
+          logo_url?: string | null
           name: string
           whatsapp_phone_id: string
         }
         Update: {
           created_at?: string | null
           id?: string
+          logo_url?: string | null
           name?: string
           whatsapp_phone_id?: string
         }

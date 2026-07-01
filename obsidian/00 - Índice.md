@@ -12,6 +12,8 @@ Bóveda de trazabilidad del proyecto **CRM WhatsApp multi-tenant**. Cada cambio 
 - [[Decisiones/Handoff a humano (Fase 1)]] — derivar el chat a un agente y responder desde el CRM.
 - [[Decisiones/Coexistence (WhatsApp app + Cloud API)]] — investigación: mismo número en app + API (Fase 2 opcional).
 - [[Decisiones/Roles y vistas de admin]] — roles member/admin, RLS, secciones Tenants y Estadísticas, y repo GitHub.
+- [[Decisiones/Logo por tenant]] — subida de logo por cliente (Storage) y su visualización en el panel.
+- [[Decisiones/Logging y observabilidad]] — qué se loguea y dónde (messages, event_logs, n8n, webhook, /logs).
 
 ## Bitácora
 Una nota por día con los cambios confirmados de esa jornada.

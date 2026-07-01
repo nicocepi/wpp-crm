@@ -10,6 +10,7 @@ const MEMBER_NAV: NavItem[] = [
 const ADMIN_NAV: NavItem[] = [
   { href: "/tenants", label: "Tenants", icon: "tenants" },
   { href: "/stats", label: "Estadisticas", icon: "stats" },
+  { href: "/logs", label: "Logs", icon: "logs" },
 ];
 
 export default async function DashboardLayout({
@@ -42,13 +43,31 @@ export default async function DashboardLayout({
   }
 
   const headerName = memberView && tenant ? tenant.name : "Admin";
+  // Logo del cliente (solo en la vista member / impersonacion).
+  const logo = memberView ? tenant?.logo_url ?? null : null;
 
   return (
     <div className="flex min-h-screen">
       <aside className="hidden w-60 shrink-0 flex-col border-r bg-background md:flex">
         <div className="flex items-center gap-2 border-b px-4 py-4">
-          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground">
-            <MessageCircle className="h-4 w-4" />
+          <div
+            className={
+              "flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-md " +
+              (logo
+                ? "border bg-white"
+                : "bg-primary text-primary-foreground")
+            }
+          >
+            {logo ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={logo}
+                alt={headerName}
+                className="h-full w-full object-contain"
+              />
+            ) : (
+              <MessageCircle className="h-4 w-4" />
+            )}
           </div>
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold">{headerName}</p>

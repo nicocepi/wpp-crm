@@ -11,6 +11,7 @@ create table if not exists public.tenants (
   id uuid primary key default gen_random_uuid(),
   name text not null,
   whatsapp_phone_id text not null unique,   -- phone_number_id que manda Meta en el webhook
+  logo_url text,                            -- URL publica del logo (bucket tenant-logos)
   created_at timestamptz default now()
 );
 
@@ -101,8 +102,26 @@ create table if not exists public.failed_messages (
 );
 
 -- ---------------------------------------------------------------------------
+-- event_logs (log durable de eventos para debug: flujo, envios, errores)
+-- ---------------------------------------------------------------------------
+create table if not exists public.event_logs (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid references public.tenants(id) on delete cascade,
+  contact_id uuid references public.contacts(id) on delete set null,
+  phone text,
+  source text not null default 'n8n',   -- webhook | n8n | crm
+  level text not null default 'info' check (level in ('debug','info','warn','error')),
+  event text not null,
+  message text,
+  data jsonb,
+  created_at timestamptz default now()
+);
+
+-- ---------------------------------------------------------------------------
 -- Indices (performance de RLS y queries del dashboard)
 -- ---------------------------------------------------------------------------
+create index if not exists idx_event_logs_tenant_created  on public.event_logs (tenant_id, created_at desc);
+create index if not exists idx_event_logs_contact_created on public.event_logs (contact_id, created_at desc);
 create index if not exists idx_profiles_user        on public.profiles (user_id);
 create index if not exists idx_contacts_tenant_last  on public.contacts (tenant_id, last_message_at desc);
 create index if not exists idx_messages_contact_sent on public.messages (contact_id, sent_at);

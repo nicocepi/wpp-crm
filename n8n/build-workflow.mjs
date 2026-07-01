@@ -795,6 +795,40 @@ const linkUrgentLabel = push(
 );
 linkUrgentLabel.position = [7420, yH];
 
+// ===== Logging durable (event_logs) ========================================
+// Escribe la decisión del flujo para debug (no bloquea: onError continua).
+const logFlowMenu = push(
+  http(
+    "Log flow (menu)",
+    "POST",
+    `=${SUPA}/event_logs`,
+    {
+      headers: supaHeaders([{ name: "Prefer", value: "return=minimal" }]),
+      jsonBody:
+        "={{ JSON.stringify({ tenant_id: $('contact_id').item.json.tenant_id, contact_id: $('contact_id').item.json.contact_id, phone: $('contact_id').item.json.from, source: 'n8n', level: 'info', event: 'menu_decision', message: ($('Menu engine').item.json.reply || '').slice(0, 300), data: { text: $('contact_id').item.json.text, path: $('Menu engine').item.json.path, next_menu: $('Menu engine').item.json.new_flow_state.current_menu, handoff: $('Menu engine').item.json.new_flow_state.handoff, awaiting_query: $('Menu engine').item.json.new_flow_state.awaiting_query, should_send: $('Menu engine').item.json.should_send, handoff_triggered: $('Menu engine').item.json.handoff_triggered, summary_triggered: $('Menu engine').item.json.summary_triggered } }) }}",
+      extra: { onError: "continueRegularOutput" },
+    },
+    1180,
+  ),
+);
+logFlowMenu.position = [3780, 1180];
+
+const logFlowAi = push(
+  http(
+    "Log flow (ai)",
+    "POST",
+    `=${SUPA}/event_logs`,
+    {
+      headers: supaHeaders([{ name: "Prefer", value: "return=minimal" }]),
+      jsonBody:
+        "={{ JSON.stringify({ tenant_id: $('prep AI').item.json.tenant_id, contact_id: $('prep AI').item.json.contact_id, phone: $('prep AI').item.json.from, source: 'n8n', level: ($('prep AI').item.json.can_reply ? 'info' : 'warn'), event: 'ai_reply', message: ($('prep AI').item.json.text || '').slice(0, 300), data: { text: $('prep AI').item.json.text, within24h: $('prep AI').item.json.within24h, can_reply: $('prep AI').item.json.can_reply, enabled: $('prep AI').item.json.enabled } }) }}",
+      extra: { onError: "continueRegularOutput" },
+    },
+    140,
+  ),
+);
+logFlowAi.position = [3640, -40];
+
 // Sticky note con docs
 const sticky = {
   parameters: {
@@ -844,6 +878,7 @@ connect("Modo menu?", "Menu engine", 0); // true  -> rama menú
 connect("Modo menu?", "Get history", 1); // false -> rama IA
 connect("Get history", "prep AI");
 // Rama menú guiado
+connect("Menu engine", "Log flow (menu)"); // log durable de la decision del menu
 connect("Menu engine", "Patch flow_state");
 connect("Patch flow_state", "Enviar? (menu)");
 connect("Enviar? (menu)", "Wait delay (menu)", 0); // true -> enviar
@@ -869,6 +904,7 @@ connect("Get urgent label", "urgent label id");
 connect("urgent label id", "Link urgent label");
 // branch A
 connect("prep AI", "Claude extract needs");
+connect("prep AI", "Log flow (ai)"); // log durable de la decision IA
 connect("Claude extract needs", "Update needs");
 // branch B
 connect("prep AI", "Responder?");
