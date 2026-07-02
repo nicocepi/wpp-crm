@@ -39,6 +39,27 @@ export function isHandoff(contact: Pick<Contact, "handoff">): boolean {
   return contact.handoff === true;
 }
 
+type HandoffOwn = Pick<Contact, "handoff" | "handoff_by">;
+
+/** ¿La conversación la tomó un agente (tiene dueño)? */
+export function isTaken(contact: HandoffOwn): boolean {
+  return !!contact.handoff_by;
+}
+
+/** ¿La tengo tomada yo? */
+export function isOwnedByMe(contact: HandoffOwn, userId: string | null): boolean {
+  return !!contact.handoff_by && contact.handoff_by === userId;
+}
+
+/** ¿Está tomada por OTRO agente y yo no puedo actuar (no soy dueño ni admin)? */
+export function isLockedFor(
+  contact: HandoffOwn,
+  userId: string | null,
+  isAdmin: boolean,
+): boolean {
+  return !!contact.handoff_by && contact.handoff_by !== userId && !isAdmin;
+}
+
 /** ¿La consulta del contacto fue clasificada como urgente? */
 export function isUrgent(contact: Pick<Contact, "flow_state">): boolean {
   return readFlowState(contact).urgent === true;

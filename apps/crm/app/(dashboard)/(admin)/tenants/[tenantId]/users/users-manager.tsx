@@ -12,6 +12,7 @@ export type TenantUser = {
   userId: string;
   email: string;
   role: string;
+  displayName: string | null;
   createdAt: string | null;
 };
 
@@ -26,19 +27,21 @@ export function UsersManager({
 }) {
   const router = useRouter();
   const [email, setEmail] = useState("");
+  const [name, setName] = useState("");
   const [pending, startTransition] = useTransition();
 
   function add() {
     const value = email.trim();
     if (!value) return;
     startTransition(async () => {
-      const res = await createTenantUser(tenantId, value);
+      const res = await createTenantUser(tenantId, value, name.trim());
       if (!res.ok) {
         toast.error(res.error);
         return;
       }
       toast.success("Usuario agregado");
       setEmail("");
+      setName("");
       router.refresh();
     });
   }
@@ -64,6 +67,18 @@ export function UsersManager({
       <div className="rounded-lg border p-4">
         <p className="mb-2 text-sm font-medium">Agregar usuario</p>
         <div className="flex items-end gap-2">
+          <Input
+            placeholder="Nombre del agente"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                add();
+              }
+            }}
+            className="max-w-[40%]"
+          />
           <Input
             type="email"
             placeholder="usuario@email.com"
@@ -91,6 +106,7 @@ export function UsersManager({
         <table className="w-full text-sm">
           <thead className="bg-muted/50 text-left text-xs text-muted-foreground">
             <tr>
+              <th className="px-3 py-2 font-medium">Nombre</th>
               <th className="px-3 py-2 font-medium">Email</th>
               <th className="px-3 py-2 font-medium">Rol</th>
               <th className="px-3 py-2" />
@@ -99,6 +115,11 @@ export function UsersManager({
           <tbody>
             {users.map((u) => (
               <tr key={u.userId} className="border-t">
+                <td className="px-3 py-2">
+                  {u.displayName ?? (
+                    <span className="text-muted-foreground">—</span>
+                  )}
+                </td>
                 <td className="px-3 py-2">
                   <span className="flex items-center gap-2">
                     <Mail className="h-3.5 w-3.5 text-muted-foreground" />
@@ -126,7 +147,7 @@ export function UsersManager({
             {users.length === 0 && (
               <tr>
                 <td
-                  colSpan={3}
+                  colSpan={4}
                   className="p-6 text-center text-sm text-muted-foreground"
                 >
                   Sin usuarios en este tenant.

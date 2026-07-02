@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Phone, Clock, Tag, ChevronDown } from "lucide-react";
+import { Phone, Clock, Tag, ChevronDown, Lock } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   DropdownMenu,
@@ -28,6 +28,8 @@ import {
 interface Props {
   contact: ContactWithLabels;
   allLabels: Label[];
+  /** La tomó otro agente y yo no soy dueño ni admin -> solo lectura. */
+  locked: boolean;
   onOpen: (contact: ContactWithLabels) => void;
   onRename: (id: string, name: string) => void;
   onNeeds: (id: string, needs: string) => void;
@@ -38,6 +40,7 @@ interface Props {
 export function ContactCard({
   contact,
   allLabels,
+  locked,
   onOpen,
   onRename,
   onNeeds,
@@ -65,11 +68,28 @@ export function ContactCard({
       onClick={() => onOpen(contact)}
     >
       <CardContent className="space-y-3 p-4">
-        {isHandoff(contact) && (
-          <div className="flex items-center gap-1 rounded-md bg-amber-100 px-2 py-1 text-[11px] font-medium text-amber-800">
-            <UserCheck className="h-3 w-3" /> Necesita agente
-          </div>
-        )}
+        {isHandoff(contact) &&
+          (contact.handoff_by ? (
+            <div
+              className={
+                "flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium " +
+                (locked
+                  ? "bg-zinc-100 text-zinc-600"
+                  : "bg-indigo-100 text-indigo-800")
+              }
+            >
+              {locked ? (
+                <Lock className="h-3 w-3" />
+              ) : (
+                <UserCheck className="h-3 w-3" />
+              )}{" "}
+              Atendido por {contact.handoff_by_name ?? "un agente"}
+            </div>
+          ) : (
+            <div className="flex items-center gap-1 rounded-md bg-amber-100 px-2 py-1 text-[11px] font-medium text-amber-800">
+              <UserCheck className="h-3 w-3" /> Necesita agente · sin asignar
+            </div>
+          ))}
         <div className="flex items-start gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
             {initials(contact.name, contact.phone)}
@@ -83,6 +103,7 @@ export function ContactCard({
               onBlur={() => {
                 if (name !== (contact.name ?? "")) onRename(contact.id, name);
               }}
+              readOnly={locked}
               placeholder="Sin nombre"
               className="w-full truncate bg-transparent text-sm font-semibold outline-none focus:rounded focus:bg-muted focus:px-1"
             />
@@ -92,6 +113,7 @@ export function ContactCard({
           </div>
           <StatusMenu
             status={normalizeStatus(contact.status)}
+            disabled={locked}
             onChange={(s) => onStatus(contact.id, s)}
           />
         </div>
@@ -110,6 +132,7 @@ export function ContactCard({
             onBlur={() => {
               if (needs !== (contact.needs ?? "")) onNeeds(contact.id, needs);
             }}
+            readOnly={locked}
             rows={2}
             placeholder="Necesidad del contacto (autollenada por IA)..."
             className="w-full resize-none rounded border border-dashed bg-transparent px-2 py-1 text-xs outline-none focus:border-solid focus:bg-muted"
@@ -123,7 +146,10 @@ export function ContactCard({
           />
           <div onClick={(e) => e.stopPropagation()}>
             <DropdownMenu>
-              <DropdownMenuTrigger className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs text-muted-foreground hover:bg-accent">
+              <DropdownMenuTrigger
+                disabled={locked}
+                className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs text-muted-foreground hover:bg-accent disabled:opacity-50"
+              >
                 <Tag className="h-3 w-3" /> Labels
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
@@ -163,15 +189,20 @@ export function ContactCard({
 
 function StatusMenu({
   status,
+  disabled,
   onChange,
 }: {
   status: Status;
+  disabled?: boolean;
   onChange: (s: Status) => void;
 }) {
   return (
     <div onClick={(e) => e.stopPropagation()}>
       <DropdownMenu>
-        <DropdownMenuTrigger className="inline-flex items-center gap-1">
+        <DropdownMenuTrigger
+          disabled={disabled}
+          className="inline-flex items-center gap-1 disabled:opacity-60"
+        >
           <StatusBadge status={status} />
           <ChevronDown className="h-3 w-3 text-muted-foreground" />
         </DropdownMenuTrigger>

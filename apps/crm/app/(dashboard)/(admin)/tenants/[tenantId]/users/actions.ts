@@ -13,10 +13,12 @@ export type UserActionResult = { ok: true } | { ok: false; error: string };
 export async function createTenantUser(
   tenantId: string,
   email: string,
+  name?: string,
 ): Promise<UserActionResult> {
   if (!(await isAdmin())) return { ok: false, error: "No autorizado" };
   const clean = email.trim().toLowerCase();
   if (!clean || !clean.includes("@")) return { ok: false, error: "Email invalido" };
+  const displayName = (name ?? "").trim() || null;
 
   const admin = createAdminClient();
 
@@ -42,7 +44,7 @@ export async function createTenantUser(
   const { error: pErr } = await admin
     .from("profiles")
     .upsert(
-      { user_id: userId, tenant_id: tenantId, role: "member" },
+      { user_id: userId, tenant_id: tenantId, role: "member", display_name: displayName },
       { onConflict: "user_id" },
     );
   if (pErr) return { ok: false, error: pErr.message };

@@ -82,6 +82,9 @@ export type Database = {
           created_at: string | null
           flow_state: Json
           handoff: boolean
+          handoff_at: string | null
+          handoff_by: string | null
+          handoff_by_name: string | null
           id: string
           last_message_at: string | null
           last_message_preview: string | null
@@ -95,6 +98,9 @@ export type Database = {
           created_at?: string | null
           flow_state?: Json
           handoff?: boolean
+          handoff_at?: string | null
+          handoff_by?: string | null
+          handoff_by_name?: string | null
           id?: string
           last_message_at?: string | null
           last_message_preview?: string | null
@@ -108,6 +114,9 @@ export type Database = {
           created_at?: string | null
           flow_state?: Json
           handoff?: boolean
+          handoff_at?: string | null
+          handoff_by?: string | null
+          handoff_by_name?: string | null
           id?: string
           last_message_at?: string | null
           last_message_preview?: string | null
@@ -293,18 +302,21 @@ export type Database = {
       profiles: {
         Row: {
           created_at: string | null
+          display_name: string | null
           role: string
           tenant_id: string | null
           user_id: string
         }
         Insert: {
           created_at?: string | null
+          display_name?: string | null
           role?: string
           tenant_id?: string | null
           user_id: string
         }
         Update: {
           created_at?: string | null
+          display_name?: string | null
           role?: string
           tenant_id?: string | null
           user_id?: string

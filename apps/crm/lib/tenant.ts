@@ -10,6 +10,8 @@ export type CurrentProfile = {
   userId: string;
   role: Role;
   tenant: Tenant | null;
+  /** Nombre para mostrar del agente (profiles.display_name); null si no tiene. */
+  displayName: string | null;
   /** El admin esta "viendo como" un tenant (impersonacion). */
   impersonating: boolean;
 };
@@ -57,7 +59,12 @@ export async function getCurrentProfile(): Promise<CurrentProfile | null> {
     tenant = data ?? null;
   }
 
-  return { userId: user.id, role, tenant, impersonating };
+  const displayName =
+    (profile && "display_name" in profile
+      ? (profile.display_name as string | null)
+      : null) ?? null;
+
+  return { userId: user.id, role, tenant, displayName, impersonating };
 }
 
 /**

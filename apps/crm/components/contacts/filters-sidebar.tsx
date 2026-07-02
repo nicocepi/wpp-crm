@@ -7,9 +7,12 @@ import { Button } from "@/components/ui/button";
 import type { Label } from "@/lib/types";
 import { STATUS_META, STATUS_ORDER, type Status } from "@/lib/format";
 
+export type Assignment = "all" | "mine" | "unassigned";
+
 export interface Filters {
   q: string;
   status: Status | "all";
+  assignment: Assignment;
   labelIds: string[];
   from: string;
   to: string;
@@ -18,6 +21,7 @@ export interface Filters {
 export const EMPTY_FILTERS: Filters = {
   q: "",
   status: "all",
+  assignment: "all",
   labelIds: [],
   from: "",
   to: "",
@@ -46,9 +50,16 @@ export function FiltersSidebar({
   const hasActive =
     filters.q ||
     filters.status !== "all" ||
+    filters.assignment !== "all" ||
     filters.labelIds.length > 0 ||
     filters.from ||
     filters.to;
+
+  const ASSIGNMENTS: { value: Assignment; label: string }[] = [
+    { value: "all", label: "Todas" },
+    { value: "mine", label: "Mías" },
+    { value: "unassigned", label: "Sin asignar" },
+  ];
 
   return (
     <div className="flex w-full flex-col gap-5 p-4">
@@ -62,6 +73,22 @@ export function FiltersSidebar({
             placeholder="Nombre o telefono"
             className="pl-8"
           />
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <UiLabel>Conversaciones</UiLabel>
+        <div className="flex flex-wrap gap-1.5">
+          {ASSIGNMENTS.map((a) => (
+            <button
+              key={a.value}
+              type="button"
+              onClick={() => set({ assignment: a.value })}
+              className={chip(filters.assignment === a.value)}
+            >
+              {a.label}
+            </button>
+          ))}
         </div>
       </div>
 

@@ -1,7 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Phone, Send, UserCheck, Bot, Paperclip, X, FileText } from "lucide-react";
+import {
+  Phone,
+  Send,
+  UserCheck,
+  Bot,
+  Paperclip,
+  X,
+  FileText,
+  Lock,
+} from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -15,7 +24,13 @@ import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { initials, shortTime } from "@/lib/format";
-import { isHandoff, type ContactWithLabels, type Message } from "@/lib/types";
+import {
+  isHandoff,
+  isOwnedByMe,
+  isTaken,
+  type ContactWithLabels,
+  type Message,
+} from "@/lib/types";
 import {
   sendAgentMessage,
   sendAgentAttachment,
@@ -29,11 +44,15 @@ export function ConversationSheet({
   open,
   onOpenChange,
   onToggleHandoff,
+  currentUserId,
+  isAdmin,
 }: {
   contact: ContactWithLabels | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onToggleHandoff: (contact: ContactWithLabels, on: boolean) => Promise<void>;
+  currentUserId: string;
+  isAdmin: boolean;
 }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
@@ -47,6 +66,13 @@ export function ConversationSheet({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handoff = contact ? isHandoff(contact) : false;
+  // Ownership de la conversación.
+  const owned = contact ? isOwnedByMe(contact, currentUserId) : false;
+  const taken = contact ? isTaken(contact) : false;
+  const takenByOther = taken && !owned;
+  const lockedForMe = takenByOther && !isAdmin;
+  // Puedo escribir si la tengo yo (o soy admin). Si no, solo lectura.
+  const canCompose = owned || isAdmin;
 
   // Firma las URLs de los mensajes con media que aún no estén en cache.
   const ensureSignedUrls = useCallback(async (msgs: Message[]) => {
@@ -190,7 +216,8 @@ export function ConversationSheet({
   async function handleToggleHandoff() {
     if (!contact || togglingHandoff) return;
     setTogglingHandoff(true);
-    await onToggleHandoff(contact, !handoff);
+    // Si la tengo yo -> liberar; si no -> tomar (claim; el admin puede forzar).
+    await onToggleHandoff(contact, !owned);
     setTogglingHandoff(false);
   }
 
@@ -212,30 +239,55 @@ export function ConversationSheet({
                   <Phone className="h-3 w-3" /> {contact.phone}
                 </SheetDescription>
               </div>
-              <Button
-                type="button"
-                size="sm"
-                variant={handoff ? "default" : "outline"}
-                onClick={handleToggleHandoff}
-                disabled={togglingHandoff}
-                className="shrink-0 gap-1"
-              >
-                {handoff ? (
-                  <>
-                    <Bot className="h-3.5 w-3.5" /> Reactivar bot
-                  </>
-                ) : (
-                  <>
-                    <UserCheck className="h-3.5 w-3.5" /> Tomar control
-                  </>
-                )}
-              </Button>
+              {lockedForMe ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled
+                  className="shrink-0 gap-1"
+                >
+                  <Lock className="h-3.5 w-3.5" /> Atendido por{" "}
+                  {contact.handoff_by_name ?? "un agente"}
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={owned ? "default" : "outline"}
+                  onClick={handleToggleHandoff}
+                  disabled={togglingHandoff}
+                  className="shrink-0 gap-1"
+                >
+                  {owned ? (
+                    <>
+                      <Bot className="h-3.5 w-3.5" /> Reactivar bot
+                    </>
+                  ) : (
+                    <>
+                      <UserCheck className="h-3.5 w-3.5" /> Tomar control
+                    </>
+                  )}
+                </Button>
+              )}
             </SheetHeader>
 
-            {handoff && (
+            {owned && (
               <div className="border-b bg-amber-50 px-4 py-2 text-xs text-amber-800">
-                Un agente está atendiendo este chat. El bot está en pausa hasta
-                que reactivés.
+                Estás atendiendo este chat. El bot está en pausa hasta que
+                reactivés.
+              </div>
+            )}
+            {takenByOther && (
+              <div className="border-b bg-zinc-100 px-4 py-2 text-xs text-zinc-600">
+                Lo está atendiendo{" "}
+                <strong>{contact.handoff_by_name ?? "otro agente"}</strong>.{" "}
+                {isAdmin ? "Podés tomar el control." : "Solo lectura."}
+              </div>
+            )}
+            {handoff && !taken && (
+              <div className="border-b bg-amber-50 px-4 py-2 text-xs text-amber-800">
+                Necesita agente. Tomá el control para responder.
               </div>
             )}
 
@@ -281,6 +333,13 @@ export function ConversationSheet({
               <div ref={bottomRef} />
             </div>
 
+            {!canCompose ? (
+              <div className="border-t px-4 py-3 text-center text-xs text-muted-foreground">
+                {takenByOther
+                  ? `Solo lectura — la está atendiendo ${contact.handoff_by_name ?? "otro agente"}.`
+                  : "Tomá el control para responder."}
+              </div>
+            ) : (
             <div className="border-t p-3">
               {file && (
                 <div className="mb-2 flex items-center gap-2 rounded-md border bg-muted/50 px-2 py-1.5 text-xs">
@@ -351,6 +410,7 @@ export function ConversationSheet({
                 la ventana de 24h de WhatsApp.
               </p>
             </div>
+            )}
           </>
         )}
       </SheetContent>

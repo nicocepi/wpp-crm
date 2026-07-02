@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getCurrentTenant } from "@/lib/tenant";
+import { getCurrentProfile } from "@/lib/tenant";
 import type { ContactWithLabels, Label } from "@/lib/types";
 import { ContactsView } from "@/components/contacts/contacts-view";
 
@@ -11,9 +11,14 @@ type ContactRow = ContactWithLabels & {
 };
 
 export default async function ContactsPage() {
-  const tenant = await getCurrentTenant();
+  const profile = await getCurrentProfile();
+  const tenant = profile?.tenant ?? null;
   // Admin sin tenant (no impersonando): no tiene contactos propios -> a tenants.
   if (!tenant) redirect("/tenants");
+  const currentUserId = profile?.userId ?? "";
+  // El admin puede forzar liberar/tomar (incluso impersonando): es su vía para
+  // destrabar una conversación de un agente desconectado. Coincide con el server.
+  const isAdmin = profile?.role === "admin";
 
   const supabase = await createClient();
 
@@ -44,6 +49,9 @@ export default async function ContactsPage() {
       tenantId={tenant.id}
       initialContacts={contacts}
       labels={labels}
+      currentUserId={currentUserId}
+      currentUserName={profile?.displayName ?? "Vos"}
+      isAdmin={isAdmin}
     />
   );
 }

@@ -8,6 +8,9 @@ import {
   URGENT_LABEL,
   isHandoff,
   isUrgent,
+  isLockedFor,
+  isOwnedByMe,
+  isTaken,
   readFlowState,
   type ContactWithLabels,
   type Contact,
@@ -28,10 +31,16 @@ export function ContactsView({
   tenantId,
   initialContacts,
   labels,
+  currentUserId,
+  currentUserName,
+  isAdmin,
 }: {
   tenantId: string;
   initialContacts: ContactWithLabels[];
   labels: Label[];
+  currentUserId: string;
+  currentUserName: string;
+  isAdmin: boolean;
 }) {
   const [contacts, setContacts] = useState<ContactWithLabels[]>(initialContacts);
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
@@ -147,6 +156,8 @@ export function ContactsView({
   // ---- Handoff: tomar/soltar control desde el CRM -------------------------
   async function onToggleHandoff(contact: ContactWithLabels, on: boolean) {
     if (on) suppressChime.current.add(contact.id);
+    // Snapshot para rollback si el claim/liberar falla (ej: ya la tomó otro).
+    const prevContact = contactsRef.current.find((c) => c.id === contact.id);
     // Optimista: columna handoff + reset de sesión al reactivar + labels.
     setContacts((prev) =>
       prev.map((c) => {
@@ -159,6 +170,10 @@ export function ContactsView({
           ...c,
           handoff: on,
           flow_state: nextFs,
+          // Ownership optimista (el server confirma y realtime trae el nombre real).
+          handoff_by: on ? currentUserId : null,
+          handoff_by_name: on ? currentUserName : null,
+          handoff_at: on ? new Date().toISOString() : null,
           // Tomar control manual: marca atención, no urgencia. Reactivar: limpia ambas.
           labels: withAutoLabels(c.labels, on, false),
         };
@@ -168,6 +183,11 @@ export function ContactsView({
     if (!res.ok) {
       toast.error(res.error);
       if (on) suppressChime.current.delete(contact.id);
+      // Rollback: restaura el estado previo del contacto (no pisa realtime nuevo).
+      if (prevContact)
+        setContacts((prev) =>
+          prev.map((c) => (c.id === contact.id ? prevContact : c)),
+        );
     } else {
       toast.success(on ? "Tomaste el control del chat" : "Bot reactivado");
     }
@@ -253,6 +273,12 @@ export function ContactsView({
         const ids = new Set(c.labels.map((l) => l.id));
         if (!filters.labelIds.some((id) => ids.has(id))) return false;
       }
+      if (filters.assignment === "mine" && !isOwnedByMe(c, currentUserId)) {
+        return false;
+      }
+      if (filters.assignment === "unassigned" && (!isHandoff(c) || isTaken(c))) {
+        return false;
+      }
       if (fromTs || toTs) {
         const ts = c.last_message_at
           ? new Date(c.last_message_at).getTime()
@@ -263,7 +289,7 @@ export function ContactsView({
       }
       return true;
     });
-  }, [contacts, filters]);
+  }, [contacts, filters, currentUserId]);
 
   // mantener el contacto abierto sincronizado con el estado
   const selectedLive = selected
@@ -295,6 +321,7 @@ export function ContactsView({
                 key={contact.id}
                 contact={contact}
                 allLabels={labels}
+                locked={isLockedFor(contact, currentUserId, isAdmin)}
                 onOpen={openContact}
                 onRename={onRename}
                 onNeeds={onNeeds}
@@ -311,6 +338,8 @@ export function ContactsView({
         open={sheetOpen}
         onOpenChange={setSheetOpen}
         onToggleHandoff={onToggleHandoff}
+        currentUserId={currentUserId}
+        isAdmin={isAdmin}
       />
     </div>
   );

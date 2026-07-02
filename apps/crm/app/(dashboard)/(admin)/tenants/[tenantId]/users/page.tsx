@@ -29,7 +29,7 @@ export default async function TenantUsersPage({
   const [{ data: profiles }, { data: authList }] = await Promise.all([
     admin
       .from("profiles")
-      .select("user_id, role, created_at")
+      .select("user_id, role, created_at, display_name")
       .eq("tenant_id", tenant.id),
     admin.auth.admin.listUsers({ page: 1, perPage: 1000 }),
   ]);
@@ -42,6 +42,7 @@ export default async function TenantUsersPage({
       userId: p.user_id,
       email: emailById.get(p.user_id) ?? "—",
       role: p.role,
+      displayName: p.display_name ?? null,
       createdAt: p.created_at,
     }))
     .sort((a, b) => a.email.localeCompare(b.email));

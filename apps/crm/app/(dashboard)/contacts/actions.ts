@@ -6,6 +6,42 @@ import { getCurrentTenant } from "@/lib/tenant";
 import { readFlowState, ATTENTION_LABEL, URGENT_LABEL } from "@/lib/types";
 import type { Message } from "@/lib/types";
 
+/** Identidad del usuario logueado para el ownership del handoff. */
+async function currentAgent(): Promise<{
+  userId: string;
+  name: string;
+  isAdmin: boolean;
+} | null> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return null;
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("display_name, role")
+    .eq("user_id", user.id)
+    .single();
+  const name =
+    (profile?.display_name && profile.display_name.trim()) ||
+    user.email ||
+    "Agente";
+  return { userId: user.id, name, isAdmin: profile?.role === "admin" };
+}
+
+/** Devuelve un mensaje de error si el agente NO puede responder esta
+ *  conversación (no es el dueño ni admin), o null si puede. */
+function ownershipError(
+  contact: { handoff_by: string | null; handoff_by_name: string | null },
+  agent: { userId: string; isAdmin: boolean } | null,
+): string | null {
+  if (!agent) return "Sesión no válida";
+  if (agent.isAdmin) return null;
+  if (!contact.handoff_by) return "Tomá el control primero para responder.";
+  if (contact.handoff_by === agent.userId) return null;
+  return `La está atendiendo ${contact.handoff_by_name ?? "otro agente"}.`;
+}
+
 export type AgentActionResult =
   | { ok: true; message?: Message }
   | { ok: false; error: string };
@@ -92,10 +128,15 @@ export async function sendAgentMessage(
   // El contacto debe ser del tenant (RLS lo garantiza igual).
   const { data: contact } = await supabase
     .from("contacts")
-    .select("id, phone, tenant_id")
+    .select("id, phone, tenant_id, handoff_by, handoff_by_name")
     .eq("id", contactId)
     .single();
   if (!contact) return { ok: false, error: "Contacto no encontrado" };
+
+  // Ownership: solo el dueño del handoff (o un admin) puede responder.
+  const agent = await currentAgent();
+  const ownGuard = ownershipError(contact, agent);
+  if (ownGuard) return { ok: false, error: ownGuard };
 
   // Enviar a Meta Graph API.
   const res = await fetch(
@@ -202,10 +243,15 @@ export async function sendAgentAttachment(
 
   const { data: contact } = await supabase
     .from("contacts")
-    .select("id, phone, tenant_id")
+    .select("id, phone, tenant_id, handoff_by, handoff_by_name")
     .eq("id", contactId)
     .single();
   if (!contact) return { ok: false, error: "Contacto no encontrado" };
+
+  // Ownership: solo el dueño del handoff (o un admin) puede responder.
+  const agent = await currentAgent();
+  const ownGuard = ownershipError(contact, agent);
+  if (ownGuard) return { ok: false, error: ownGuard };
 
   // Nombre de archivo legible (para documentos y para el registro).
   const rawName = file.name && file.name.trim() ? file.name.trim() : `archivo.${meta.ext}`;
@@ -304,9 +350,11 @@ export async function sendAgentAttachment(
 }
 
 /**
- * Activa/desactiva el handoff (humano al control) en contacts.flow_state.
- * Al liberar, resetea la sesión de menú (current_menu=null) para que el
- * próximo mensaje del cliente reinicie el bot desde la bienvenida.
+ * Toma (on=true) o libera (on=false) el handoff, con ownership por agente.
+ * - Tomar: claim ATÓMICO (solo si está sin asignar; el admin puede forzar y
+ *   reasignar a sí mismo). Registra el dueño (handoff_by/handoff_by_name/at).
+ * - Liberar: permitido al dueño, al admin, o si estaba sin asignar; resetea el
+ *   estado de menú para que el próximo mensaje reinicie el bot.
  */
 export async function setHandoff(
   contactId: string,
@@ -316,32 +364,62 @@ export async function setHandoff(
 
   const { data: contact } = await supabase
     .from("contacts")
-    .select("id, flow_state")
+    .select("id, flow_state, handoff_by, handoff_by_name")
     .eq("id", contactId)
     .single();
   if (!contact) return { ok: false, error: "Contacto no encontrado" };
 
-  // handoff es una columna dedicada (no flow_state) para evitar el race con n8n.
-  // Tomar control: solo set handoff=true. Reactivar: handoff=false + reset de la
-  // sesión de menú (sin menú activo, sin mute del día ni urgencia) -> bienvenida.
-  const update = on
-    ? { handoff: true }
-    : {
+  const agent = await currentAgent();
+  if (!agent) return { ok: false, error: "Sesión no válida" };
+
+  if (on) {
+    // TOMAR. Idempotente si ya es mía.
+    if (!(contact.handoff_by && contact.handoff_by === agent.userId)) {
+      const base = supabase
+        .from("contacts")
+        .update({
+          handoff: true,
+          handoff_by: agent.userId,
+          handoff_by_name: agent.name,
+          handoff_at: new Date().toISOString(),
+        })
+        .eq("id", contactId);
+      // member: solo si está libre; admin: puede forzar (reasignar a sí mismo).
+      const q = agent.isAdmin ? base : base.is("handoff_by", null);
+      const { data: claimed, error } = await q.select("id");
+      if (error) return { ok: false, error: error.message };
+      if (!claimed || claimed.length === 0) {
+        return {
+          ok: false,
+          error: `La está atendiendo ${contact.handoff_by_name ?? "otro agente"}.`,
+        };
+      }
+    }
+  } else {
+    // LIBERAR. Bloqueado si la tiene otro y no soy admin.
+    if (contact.handoff_by && contact.handoff_by !== agent.userId && !agent.isAdmin) {
+      return {
+        ok: false,
+        error: `La está atendiendo ${contact.handoff_by_name ?? "otro agente"}.`,
+      };
+    }
+    const { error } = await supabase
+      .from("contacts")
+      .update({
         handoff: false,
+        handoff_by: null,
+        handoff_by_name: null,
+        handoff_at: null,
         flow_state: {
           ...readFlowState(contact),
           current_menu: null,
           muted_date: null,
           urgent: false,
         },
-      };
-
-  const { error } = await supabase
-    .from("contacts")
-    .update(update)
-    .eq("id", contactId);
-
-  if (error) return { ok: false, error: error.message };
+      })
+      .eq("id", contactId);
+    if (error) return { ok: false, error: error.message };
+  }
 
   // Sincroniza labels automáticas. Tomar control: agrega "Necesita agente".
   // Reactivar: quita "Necesita agente" y "Urgente".
