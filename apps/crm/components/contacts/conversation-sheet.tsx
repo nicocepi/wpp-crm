@@ -126,45 +126,51 @@ export function ConversationSheet({
 
   async function handleSend() {
     if (!contact || sending) return;
-    // Con archivo: enviar adjunto (el texto va como caption). Sin archivo: texto.
-    if (file) {
-      setSending(true);
-      const fd = new FormData();
-      fd.set("file", file);
-      if (draft.trim()) fd.set("caption", draft.trim());
-      const res = await sendAgentAttachment(contact.id, fd);
-      setSending(false);
+    if (!file && !draft.trim()) return;
+    // try/finally: `sending` siempre se resetea, aunque la action falle
+    // (evita que el botón quede trabado en disabled).
+    setSending(true);
+    try {
+      // Con archivo: enviar adjunto (el texto va como caption). Sin archivo: texto.
+      if (file) {
+        const fd = new FormData();
+        fd.set("file", file);
+        if (draft.trim()) fd.set("caption", draft.trim());
+        const res = await sendAgentAttachment(contact.id, fd);
+        if (!res.ok) {
+          toast.error(res.error);
+          return;
+        }
+        setDraft("");
+        setFile(null);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+        if (res.message) {
+          const msg = res.message;
+          if (msg.media_url && res.signedUrl) {
+            setMediaUrls((cur) => ({ ...cur, [msg.media_url!]: res.signedUrl! }));
+          }
+          setMessages((prev) =>
+            prev.some((m) => m.id === msg.id) ? prev : [...prev, msg],
+          );
+        }
+        return;
+      }
+
+      const res = await sendAgentMessage(contact.id, draft);
       if (!res.ok) {
         toast.error(res.error);
         return;
       }
       setDraft("");
-      setFile(null);
       if (res.message) {
-        const msg = res.message;
-        if (msg.media_url && res.signedUrl) {
-          setMediaUrls((cur) => ({ ...cur, [msg.media_url!]: res.signedUrl! }));
-        }
         setMessages((prev) =>
-          prev.some((m) => m.id === msg.id) ? prev : [...prev, msg],
+          prev.some((m) => m.id === res.message!.id) ? prev : [...prev, res.message!],
         );
       }
-      return;
-    }
-
-    if (!draft.trim()) return;
-    setSending(true);
-    const res = await sendAgentMessage(contact.id, draft);
-    setSending(false);
-    if (!res.ok) {
-      toast.error(res.error);
-      return;
-    }
-    setDraft("");
-    if (res.message) {
-      setMessages((prev) =>
-        prev.some((m) => m.id === res.message!.id) ? prev : [...prev, res.message!],
-      );
+    } catch {
+      toast.error("No se pudo enviar. Probá de nuevo.");
+    } finally {
+      setSending(false);
     }
   }
 
