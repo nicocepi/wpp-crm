@@ -9,9 +9,10 @@ export const config = {
   matcher: [
     /*
      * Todas las rutas excepto:
+     * - api (rutas maquina-a-maquina; validan su propia auth, ej. secreto)
      * - _next/static, _next/image, favicon
      * - archivos estaticos (svg/png/jpg/...)
      */
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };
