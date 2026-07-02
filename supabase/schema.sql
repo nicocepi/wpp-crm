@@ -90,7 +90,9 @@ create table if not exists public.bot_configs (
   system_prompt text,
   reply_delay_seconds int default 2,
   flow_type text not null default 'ai' check (flow_type in ('ai','menu')),  -- 'ai': Claude libre · 'menu': flujo guiado
-  flow_definition jsonb                                                      -- árbol del flujo (solo modo menu)
+  flow_definition jsonb,                                                     -- árbol del flujo (solo modo menu)
+  alert_email text,                                                          -- casilla para alertas de handoff (vacío = off)
+  alert_delay_minutes int not null default 5                                 -- minutos sin atender antes de alertar
 );
 
 -- ---------------------------------------------------------------------------

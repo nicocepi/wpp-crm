@@ -200,6 +200,46 @@ export function BotConfigForm({
         </p>
       </div>
 
+      {/* Alertas de handoff por email */}
+      <div className="space-y-4 rounded-lg border p-4">
+        <div>
+          <Label className="text-base">Alertas de handoff (email)</Label>
+          <p className="text-sm text-muted-foreground">
+            Si un cliente pide un agente y nadie lo atiende en el tiempo indicado,
+            se envía un aviso por correo.
+          </p>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="alert_email">Casilla de destino</Label>
+          <Input
+            id="alert_email"
+            name="alert_email"
+            type="email"
+            defaultValue={config?.alert_email ?? ""}
+            placeholder="avisos@tuempresa.com"
+            className="max-w-sm"
+          />
+          <p className="text-xs text-muted-foreground">
+            Vacío = alerta desactivada.
+          </p>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="alert_delay_minutes">Avisar tras (minutos sin atender)</Label>
+          <Input
+            id="alert_delay_minutes"
+            name="alert_delay_minutes"
+            type="number"
+            min={1}
+            max={1440}
+            defaultValue={config?.alert_delay_minutes ?? 5}
+            className="max-w-[140px]"
+          />
+          <p className="text-xs text-muted-foreground">
+            Minutos desde el pedido hasta el aviso (1-1440).
+          </p>
+        </div>
+      </div>
+
       <SaveButton />
     </form>
   );

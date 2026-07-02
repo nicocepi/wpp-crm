@@ -313,7 +313,7 @@ const getBot = push(
   http(
     "Get bot_config",
     "GET",
-    `=${SUPA}/bot_configs?tenant_id=eq.{{ $('contact_id').item.json.tenant_id }}&select=enabled,system_prompt,reply_delay_seconds,flow_type,flow_definition`,
+    `=${SUPA}/bot_configs?tenant_id=eq.{{ $('contact_id').item.json.tenant_id }}&select=enabled,system_prompt,reply_delay_seconds,flow_type,flow_definition,alert_email,alert_delay_minutes`,
     { headers: supaHeaders() },
   ),
 );
@@ -513,6 +513,8 @@ return [{ json: { ...c,
   enabled: cfg.enabled !== false,
   system_prompt: cfg.system_prompt || '',
   reply_delay_seconds: cfg.reply_delay_seconds ?? 2,
+  alert_email: cfg.alert_email || '',
+  alert_delay_minutes: cfg.alert_delay_minutes ?? 5,
 } }];`,
   ),
 );
@@ -845,6 +847,67 @@ const linkAttnLabel = push(
 );
 linkAttnLabel.position = [6020, yH];
 
+// ----- Alerta de handoff por email (si sigue sin atender a los N min) --------
+// Cuelga de "Handoff?" (true). n8n programa el delay y dispara; el CRM re-chequea
+// que siga sin asignar y manda el mail por SMTP.
+const yAlert = yH + 220;
+const alertIf = push(
+  ifBool(
+    "Alerta configurada?",
+    "={{ (($('bot cfg').first().json.alert_email) || '').length > 0 }}",
+    yAlert,
+  ),
+);
+alertIf.position = [5460, yAlert];
+
+const prepAlert = push(
+  code(
+    "prep alerta",
+    `const cfg = $('bot cfg').first().json;
+const c = $('contact_id').first().json;
+return [{ json: {
+  contact_id: c.contact_id,
+  requested_at: c.timestamp || new Date().toISOString(),
+  delay: cfg.alert_delay_minutes || 5,
+} }];`,
+    yAlert,
+  ),
+);
+prepAlert.position = [5740, yAlert];
+
+const waitAlert = push(
+  node(
+    "Wait alerta",
+    "n8n-nodes-base.wait",
+    1.1,
+    { amount: "={{ $('prep alerta').item.json.delay }}", unit: "minutes" },
+    yAlert,
+    { webhookId: randomUUID() },
+  ),
+);
+waitAlert.position = [6020, yAlert];
+
+const postAlert = push(
+  http(
+    "POST alerta",
+    "POST",
+    "={{ $env.CRM_BASE_URL }}/api/handoff-alert",
+    {
+      headers: {
+        parameters: [
+          { name: "x-alert-secret", value: "={{ $env.HANDOFF_ALERT_SECRET }}" },
+          { name: "Content-Type", value: "application/json" },
+        ],
+      },
+      jsonBody:
+        "={{ JSON.stringify({ contact_id: $('prep alerta').item.json.contact_id, requested_at: $('prep alerta').item.json.requested_at }) }}",
+      extra: { onError: "continueRegularOutput" },
+    },
+    yAlert,
+  ),
+);
+postAlert.position = [6300, yAlert];
+
 // Si Claude marcó la consulta como urgente -> flag en flow_state + label "Urgente".
 const urgentIf = push(
   ifBool("Urgente?", "={{ $('parse result').item.json.urgente }}", yH),
@@ -1013,6 +1076,11 @@ connect("parse result", "Update needs (menu)");
 // La label "Necesita agente" solo si fue handoff
 connect("Update needs (menu)", "Handoff?");
 connect("Handoff?", "Get attention label", 0); // true -> aplicar label
+// Alerta por email: rama paralela desde "Handoff?" (true).
+connect("Handoff?", "Alerta configurada?", 0);
+connect("Alerta configurada?", "prep alerta", 0); // true -> hay casilla
+connect("prep alerta", "Wait alerta");
+connect("Wait alerta", "POST alerta");
 connect("Get attention label", "attn label id");
 connect("attn label id", "Link attention label");
 // Urgencia: si Claude la marcó urgente, flag + label "Urgente"

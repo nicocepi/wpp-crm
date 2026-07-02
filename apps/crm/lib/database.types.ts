@@ -14,6 +14,8 @@ export type Database = {
     Tables: {
       bot_configs: {
         Row: {
+          alert_delay_minutes: number
+          alert_email: string | null
           enabled: boolean | null
           flow_definition: Json | null
           flow_type: string
@@ -22,6 +24,8 @@ export type Database = {
           tenant_id: string
         }
         Insert: {
+          alert_delay_minutes?: number
+          alert_email?: string | null
           enabled?: boolean | null
           flow_definition?: Json | null
           flow_type?: string
@@ -30,6 +34,8 @@ export type Database = {
           tenant_id: string
         }
         Update: {
+          alert_delay_minutes?: number
+          alert_email?: string | null
           enabled?: boolean | null
           flow_definition?: Json | null
           flow_type?: string

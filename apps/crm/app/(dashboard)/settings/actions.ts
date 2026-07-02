@@ -55,6 +55,16 @@ export async function saveBotConfig(
     ? Math.max(0, Math.min(60, Math.round(delayRaw)))
     : 2;
 
+  // Alertas de handoff por email.
+  const alertEmail = String(formData.get("alert_email") ?? "").trim();
+  if (alertEmail && !alertEmail.includes("@")) {
+    return { error: "La casilla de alertas no es un email válido" };
+  }
+  const alertMinRaw = Number(formData.get("alert_delay_minutes"));
+  const alertMinutes = Number.isFinite(alertMinRaw)
+    ? Math.max(1, Math.min(1440, Math.round(alertMinRaw)))
+    : 5;
+
   const flowType = formData.get("flow_type") === "menu" ? "menu" : "ai";
   const flowDefRaw = String(formData.get("flow_definition") ?? "").trim();
 
@@ -82,6 +92,8 @@ export async function saveBotConfig(
       reply_delay_seconds: replyDelay,
       flow_type: flowType,
       flow_definition: flowDefinition as never,
+      alert_email: alertEmail || null,
+      alert_delay_minutes: alertMinutes,
     },
     { onConflict: "tenant_id" },
   );

@@ -20,6 +20,7 @@ Los cambios de base se aplican corriendo estos archivos **en orden** en el SQL E
 | 12 | `chat-attachments.sql` | Columnas `messages.media_url/media_mime/media_filename` + bucket privado `chat-attachments` + Storage RLS (lectura por tenant). |
 | 13 | `multi-agent-handoff.sql` | `contacts.handoff_by/handoff_by_name/handoff_at` (ownership del handoff) + `profiles.display_name`. |
 | 14 | `tenant-admin-role.sql` | Amplía el CHECK de `profiles.role` para incluir `tenant_admin` (admin por-tenant: override de handoff, no admin global). |
+| 15 | `handoff-alert-config.sql` | `bot_configs.alert_email` + `alert_delay_minutes` (alerta por email cuando un handoff queda sin atender). |
 
 ## Nota sobre `schema.sql` (drift)
 `schema.sql` es un **snapshot al día** del esquema completo (incluye lo que agregan las
