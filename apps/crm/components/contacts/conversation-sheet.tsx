@@ -364,7 +364,11 @@ function MessageBody({ message: m, url }: { message: Message; url?: string }) {
   const isMedia = !!m.media_url;
   const isImage = m.message_type === "image" || mime.startsWith("image/");
   const isAudio = m.message_type === "audio" || mime.startsWith("audio/");
-  const caption = m.content?.trim();
+  // Caption real: quita el placeholder del inbound ("[imagen]", "[audio]",
+  // "[documento]") y deja solo el texto que haya escrito el usuario.
+  const caption = (m.content ?? "")
+    .replace(/^\[(imagen|audio|documento)\]\s*/i, "")
+    .trim();
 
   if (isMedia && !url) {
     // Firmando la URL (o sin permiso): placeholder.
@@ -402,19 +406,22 @@ function MessageBody({ message: m, url }: { message: Message; url?: string }) {
   }
 
   if (isMedia && url) {
-    // Documento (PDF u otro): card con link.
+    // Documento (PDF u otro): card con link + caption debajo si hay.
     return (
-      <a
-        href={url}
-        target="_blank"
-        rel="noreferrer"
-        className="flex items-center gap-2 px-2 py-1.5 underline-offset-2 hover:underline"
-      >
-        <FileText className="h-4 w-4 shrink-0" />
-        <span className="min-w-0 flex-1 truncate">
-          {m.media_filename || caption || "documento"}
-        </span>
-      </a>
+      <div>
+        <a
+          href={url}
+          target="_blank"
+          rel="noreferrer"
+          className="flex items-center gap-2 px-2 py-1.5 underline-offset-2 hover:underline"
+        >
+          <FileText className="h-4 w-4 shrink-0" />
+          <span className="min-w-0 flex-1 truncate">
+            {m.media_filename || "documento"}
+          </span>
+        </a>
+        {caption && <p className="px-2 pb-1">{caption}</p>}
+      </div>
     );
   }
 
