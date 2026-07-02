@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { Phone, Send, UserCheck, Bot } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Phone, Send, UserCheck, Bot, Paperclip, X, FileText } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -16,7 +16,13 @@ import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { initials, shortTime } from "@/lib/format";
 import { isHandoff, type ContactWithLabels, type Message } from "@/lib/types";
-import { sendAgentMessage } from "@/app/(dashboard)/contacts/actions";
+import {
+  sendAgentMessage,
+  sendAgentAttachment,
+} from "@/app/(dashboard)/contacts/actions";
+
+const ATTACH_BUCKET = "chat-attachments";
+const ACCEPT = "image/png,image/jpeg,image/webp,application/pdf";
 
 export function ConversationSheet({
   contact,
@@ -34,9 +40,40 @@ export function ConversationSheet({
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [togglingHandoff, setTogglingHandoff] = useState(false);
+  const [file, setFile] = useState<File | null>(null);
+  // path del bucket -> URL firmada para mostrar la media.
+  const [mediaUrls, setMediaUrls] = useState<Record<string, string>>({});
   const bottomRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handoff = contact ? isHandoff(contact) : false;
+
+  // Firma las URLs de los mensajes con media que aún no estén en cache.
+  const ensureSignedUrls = useCallback(async (msgs: Message[]) => {
+    const paths = msgs
+      .map((m) => m.media_url)
+      .filter((p): p is string => !!p);
+    setMediaUrls((prev) => {
+      const missing = paths.filter((p) => !prev[p]);
+      if (missing.length === 0) return prev;
+      const supabase = createClient();
+      // Firma en paralelo y mergea al terminar (fuera del setState).
+      Promise.all(
+        missing.map(async (p) => {
+          const { data } = await supabase.storage
+            .from(ATTACH_BUCKET)
+            .createSignedUrl(p, 3600);
+          return [p, data?.signedUrl] as const;
+        }),
+      ).then((pairs) => {
+        const add: Record<string, string> = {};
+        for (const [p, url] of pairs) if (url) add[p] = url;
+        if (Object.keys(add).length > 0)
+          setMediaUrls((cur) => ({ ...cur, ...add }));
+      });
+      return prev;
+    });
+  }, []);
 
   useEffect(() => {
     if (!contact || !open) return;
@@ -53,6 +90,7 @@ export function ConversationSheet({
         if (!active) return;
         setMessages(data ?? []);
         setLoading(false);
+        if (data) ensureSignedUrls(data);
       });
 
     // Realtime: nuevos mensajes de esta conversacion.
@@ -71,6 +109,7 @@ export function ConversationSheet({
           setMessages((prev) =>
             prev.some((m) => m.id === msg.id) ? prev : [...prev, msg],
           );
+          if (msg.media_url) ensureSignedUrls([msg]);
         },
       )
       .subscribe();
@@ -79,14 +118,41 @@ export function ConversationSheet({
       active = false;
       supabase.removeChannel(channel);
     };
-  }, [contact, open]);
+  }, [contact, open, ensureSignedUrls]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
   async function handleSend() {
-    if (!contact || !draft.trim() || sending) return;
+    if (!contact || sending) return;
+    // Con archivo: enviar adjunto (el texto va como caption). Sin archivo: texto.
+    if (file) {
+      setSending(true);
+      const fd = new FormData();
+      fd.set("file", file);
+      if (draft.trim()) fd.set("caption", draft.trim());
+      const res = await sendAgentAttachment(contact.id, fd);
+      setSending(false);
+      if (!res.ok) {
+        toast.error(res.error);
+        return;
+      }
+      setDraft("");
+      setFile(null);
+      if (res.message) {
+        const msg = res.message;
+        if (msg.media_url && res.signedUrl) {
+          setMediaUrls((cur) => ({ ...cur, [msg.media_url!]: res.signedUrl! }));
+        }
+        setMessages((prev) =>
+          prev.some((m) => m.id === msg.id) ? prev : [...prev, msg],
+        );
+      }
+      return;
+    }
+
+    if (!draft.trim()) return;
     setSending(true);
     const res = await sendAgentMessage(contact.id, draft);
     setSending(false);
@@ -100,6 +166,19 @@ export function ConversationSheet({
         prev.some((m) => m.id === res.message!.id) ? prev : [...prev, res.message!],
       );
     }
+  }
+
+  function onPickFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0] ?? null;
+    if (f) {
+      const okType = /^(image\/(png|jpeg|webp)|application\/pdf)$/.test(f.type);
+      if (!okType) {
+        toast.error("Formato no soportado (PNG, JPG, WEBP o PDF)");
+        e.target.value = "";
+        return;
+      }
+    }
+    setFile(f);
   }
 
   async function handleToggleHandoff() {
@@ -167,6 +246,7 @@ export function ConversationSheet({
               )}
               {messages.map((m) => {
                 const outbound = m.direction === "outbound";
+                const url = m.media_url ? mediaUrls[m.media_url] : undefined;
                 return (
                   <div
                     key={m.id}
@@ -177,13 +257,14 @@ export function ConversationSheet({
                   >
                     <div
                       className={cn(
-                        "max-w-[80%] whitespace-pre-wrap rounded-2xl px-3 py-2 text-sm",
+                        "max-w-[80%] overflow-hidden whitespace-pre-wrap rounded-2xl text-sm",
+                        m.media_url ? "p-1" : "px-3 py-2",
                         outbound
                           ? "rounded-br-sm bg-primary text-primary-foreground"
                           : "rounded-bl-sm bg-muted text-foreground",
                       )}
                     >
-                      {m.content}
+                      <MessageBody message={m} url={url} />
                     </div>
                     <span className="mt-0.5 text-[10px] text-muted-foreground">
                       {shortTime(m.sent_at)}
@@ -195,7 +276,45 @@ export function ConversationSheet({
             </div>
 
             <div className="border-t p-3">
+              {file && (
+                <div className="mb-2 flex items-center gap-2 rounded-md border bg-muted/50 px-2 py-1.5 text-xs">
+                  <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <span className="min-w-0 flex-1 truncate">{file.name}</span>
+                  <span className="shrink-0 text-muted-foreground">
+                    {(file.size / 1024).toFixed(0)} KB
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFile(null);
+                      if (fileInputRef.current) fileInputRef.current.value = "";
+                    }}
+                    className="shrink-0 rounded p-0.5 hover:bg-muted"
+                    aria-label="Quitar adjunto"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              )}
               <div className="flex items-end gap-2">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept={ACCEPT}
+                  onChange={onPickFile}
+                  className="hidden"
+                />
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="outline"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={sending}
+                  className="shrink-0"
+                  aria-label="Adjuntar archivo"
+                >
+                  <Paperclip className="h-4 w-4" />
+                </Button>
                 <Textarea
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
@@ -206,22 +325,24 @@ export function ConversationSheet({
                     }
                   }}
                   rows={1}
-                  placeholder="Escribí una respuesta..."
+                  placeholder={
+                    file ? "Agregá un texto (opcional)..." : "Escribí una respuesta..."
+                  }
                   className="max-h-32 min-h-[40px] resize-none"
                 />
                 <Button
                   type="button"
                   size="icon"
                   onClick={handleSend}
-                  disabled={sending || !draft.trim()}
+                  disabled={sending || (!draft.trim() && !file)}
                   className="shrink-0"
                 >
                   <Send className="h-4 w-4" />
                 </Button>
               </div>
               <p className="mt-1 text-[10px] text-muted-foreground">
-                Enter envía · Shift+Enter nueva línea. Sujeto a la ventana de 24h
-                de WhatsApp.
+                Enter envía · Shift+Enter nueva línea · 📎 imágenes o PDF. Sujeto a
+                la ventana de 24h de WhatsApp.
               </p>
             </div>
           </>
@@ -229,4 +350,68 @@ export function ConversationSheet({
       </SheetContent>
     </Sheet>
   );
+}
+
+/** Cuerpo de una burbuja: media (imagen/pdf/audio) o texto. */
+function MessageBody({ message: m, url }: { message: Message; url?: string }) {
+  const mime = m.media_mime ?? "";
+  const isMedia = !!m.media_url;
+  const isImage = m.message_type === "image" || mime.startsWith("image/");
+  const isAudio = m.message_type === "audio" || mime.startsWith("audio/");
+  const caption = m.content?.trim();
+
+  if (isMedia && !url) {
+    // Firmando la URL (o sin permiso): placeholder.
+    return (
+      <div className="px-2 py-1.5 text-xs opacity-80">
+        {isImage ? "Cargando imagen…" : isAudio ? "Cargando audio…" : "Cargando archivo…"}
+      </div>
+    );
+  }
+
+  if (isMedia && url && isImage) {
+    return (
+      <div>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <a href={url} target="_blank" rel="noreferrer">
+          <img
+            src={url}
+            alt={caption || "imagen"}
+            className="max-h-64 w-full rounded-xl object-cover"
+          />
+        </a>
+        {caption && <p className="px-2 py-1">{caption}</p>}
+      </div>
+    );
+  }
+
+  if (isMedia && url && isAudio) {
+    return (
+      <div className="px-1 py-1">
+        {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+        <audio controls src={url} className="max-w-[240px]" />
+        {caption && <p className="px-1 pt-1">{caption}</p>}
+      </div>
+    );
+  }
+
+  if (isMedia && url) {
+    // Documento (PDF u otro): card con link.
+    return (
+      <a
+        href={url}
+        target="_blank"
+        rel="noreferrer"
+        className="flex items-center gap-2 px-2 py-1.5 underline-offset-2 hover:underline"
+      >
+        <FileText className="h-4 w-4 shrink-0" />
+        <span className="min-w-0 flex-1 truncate">
+          {m.media_filename || caption || "documento"}
+        </span>
+      </a>
+    );
+  }
+
+  // Texto plano.
+  return <>{m.content}</>;
 }

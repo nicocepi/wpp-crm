@@ -55,6 +55,12 @@ const http = (name, method, url, opts = {}, y = 300) => {
     params.specifyBody = "json";
     params.jsonBody = opts.jsonBody;
   }
+  // Cuerpo binario: reenvia el archivo del binary property indicado (ej 'data').
+  if (opts.binaryField) {
+    params.sendBody = true;
+    params.contentType = "binaryData";
+    params.inputDataFieldName = opts.binaryField;
+  }
   return node(name, "n8n-nodes-base.httpRequest", 4.2, params, y, opts.extra ?? {});
 };
 
@@ -142,6 +148,10 @@ return [{ json: {
   message_id: body.message_id,
   type: body.type || 'text',
   text: body.text || '',
+  media_id: body.media_id || null,
+  media_mime: body.media_mime || null,
+  media_filename: body.media_filename || null,
+  is_media: ['image','document','audio'].includes(body.type) && !!body.media_id,
   timestamp: body.timestamp || new Date().toISOString(),
 } }];`,
   ),
@@ -200,7 +210,13 @@ if (items.length === 1 && Array.isArray(items[0])) row = items[0][0] || null;
 else if (items[0] && items[0].id) row = items[0];
 else if (items[0] && Array.isArray(items[0].body)) row = items[0].body[0] || null;
 const p = $('prep').first().json;
-return [{ json: { ...p, contact_id: row ? row.id : null, flow_state: row ? row.flow_state : {}, handoff: row ? (row.handoff === true) : false } }];`,
+// Ruta destino en Storage para la media entrante (bucket chat-attachments).
+const EXT = { 'image/jpeg':'jpg','image/png':'png','image/webp':'webp','application/pdf':'pdf','audio/ogg':'ogg','audio/mpeg':'mp3','audio/mp4':'m4a','audio/amr':'amr' };
+const baseMime = (p.media_mime || '').split(';')[0].trim();
+const ext = EXT[baseMime] || 'bin';
+const rid = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+const media_path = (p.is_media && row) ? (p.tenant_id + '/' + rid + '.' + ext) : null;
+return [{ json: { ...p, contact_id: row ? row.id : null, flow_state: row ? row.flow_state : {}, handoff: row ? (row.handoff === true) : false, media_path } }];`,
   ),
 );
 
@@ -216,6 +232,78 @@ const insertInbound = push(
       ]),
       jsonBody:
         "={{ JSON.stringify({ tenant_id: $('contact_id').item.json.tenant_id, contact_id: $('contact_id').item.json.contact_id, whatsapp_message_id: $('contact_id').item.json.message_id, direction: 'inbound', content: $('contact_id').item.json.text, message_type: $('contact_id').item.json.type, sent_at: $('contact_id').item.json.timestamp }) }}",
+    },
+  ),
+);
+
+// ----- Media entrante: descarga de Meta -> Storage --------------------------
+// Si el mensaje trae media (image/document/audio), la bajamos de Meta y la
+// subimos al bucket privado chat-attachments; el insert guarda media_url.
+// Cualquier fallo cae con gracia a "Insert inbound" (placeholder de texto).
+const GRAPH = "https://graph.facebook.com/v21.0";
+const STORAGE = "{{ $env.SUPABASE_URL }}/storage/v1";
+
+col();
+const mediaIf = push(ifBool("Es media?", "={{ $('contact_id').item.json.is_media }}"));
+
+col();
+const getMediaUrl = push(
+  http(
+    "Get media url",
+    "GET",
+    `=${GRAPH}/{{ $('contact_id').item.json.media_id }}`,
+    { headers: metaHeaders, extra: { onError: "continueErrorOutput" } },
+  ),
+);
+
+col();
+const downloadMedia = push(
+  http(
+    "Download media",
+    "GET",
+    "={{ $json.url }}",
+    {
+      headers: metaHeaders,
+      options: {
+        response: { response: { responseFormat: "file", outputPropertyName: "data" } },
+      },
+      extra: { onError: "continueErrorOutput" },
+    },
+  ),
+);
+
+col();
+const uploadMedia = push(
+  http(
+    "Upload media",
+    "POST",
+    `=${STORAGE}/object/chat-attachments/{{ $('contact_id').item.json.media_path }}`,
+    {
+      headers: {
+        parameters: [
+          { name: "apikey", value: "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}" },
+          { name: "Authorization", value: "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}" },
+          { name: "Content-Type", value: "={{ $('contact_id').item.json.media_mime }}" },
+        ],
+      },
+      binaryField: "data",
+      extra: { onError: "continueErrorOutput" },
+    },
+  ),
+);
+
+col();
+const insertInboundMedia = push(
+  http(
+    "Insert inbound (media)",
+    "POST",
+    `=${SUPA}/messages?on_conflict=whatsapp_message_id`,
+    {
+      headers: supaHeaders([
+        { name: "Prefer", value: "resolution=ignore-duplicates,return=minimal" },
+      ]),
+      jsonBody:
+        "={{ JSON.stringify({ tenant_id: $('contact_id').item.json.tenant_id, contact_id: $('contact_id').item.json.contact_id, whatsapp_message_id: $('contact_id').item.json.message_id, direction: 'inbound', content: $('contact_id').item.json.text, message_type: $('contact_id').item.json.type, media_url: $('contact_id').item.json.media_path, media_mime: $('contact_id').item.json.media_mime, media_filename: $('contact_id').item.json.media_filename, sent_at: $('contact_id').item.json.timestamp }) }}",
     },
   ),
 );
@@ -889,7 +977,17 @@ connect("Resolve tenant", "prep");
 connect("prep", "Tenant existe?");
 connect("Tenant existe?", "Upsert contact", 0);
 connect("Upsert contact", "contact_id");
-connect("contact_id", "Insert inbound");
+// Media entrante: si trae archivo, bajarlo y subirlo antes de insertar.
+connect("contact_id", "Es media?");
+connect("Es media?", "Get media url", 0); // true  -> hay media
+connect("Es media?", "Insert inbound", 1); // false -> solo texto
+connect("Get media url", "Download media", 0); // exito
+connect("Get media url", "Insert inbound", 1); // error -> fallback texto
+connect("Download media", "Upload media", 0);
+connect("Download media", "Insert inbound", 1); // error -> fallback texto
+connect("Upload media", "Insert inbound (media)", 0);
+connect("Upload media", "Insert inbound", 1); // error -> fallback texto
+connect("Insert inbound (media)", "Get bot_config");
 connect("Insert inbound", "Get bot_config");
 // Ruteo por tipo de flujo
 connect("Get bot_config", "bot cfg");

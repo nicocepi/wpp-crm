@@ -17,6 +17,7 @@ Los cambios de base se aplican corriendo estos archivos **en orden** en el SQL E
 | 9 | `event-logs.sql` | Tabla `event_logs` (log durable) + RLS. |
 | 10 | `handoff-column.sql` | Columna `contacts.handoff` (+ backfill) + CHECK rol↔tenant en `profiles`. |
 | 11 | `impersonation-rls.sql` | `is_impersonating()` + redefine `current_tenant_id()` (honra header) + recrea policies: el bypass de admin se desactiva mientras impersona. |
+| 12 | `chat-attachments.sql` | Columnas `messages.media_url/media_mime/media_filename` + bucket privado `chat-attachments` + Storage RLS (lectura por tenant). |
 
 ## Nota sobre `schema.sql` (drift)
 `schema.sql` es un **snapshot al día** del esquema completo (incluye lo que agregan las

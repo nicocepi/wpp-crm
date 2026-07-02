@@ -35,6 +35,7 @@ interface MetaMessage {
   text?: { body?: string };
   image?: { id?: string; mime_type?: string; caption?: string };
   audio?: { id?: string; mime_type?: string };
+  document?: { id?: string; mime_type?: string; filename?: string; caption?: string };
   interactive?: {
     type?: string;
     button_reply?: { id?: string; title?: string };
@@ -48,9 +49,37 @@ export interface NormalizedEvent {
   from: string; // numero del cliente
   contact_name: string | null;
   message_id: string;
-  type: string; // text | image | audio | interactive | unsupported
+  type: string; // text | image | document | audio | interactive | unsupported
   text: string; // contenido textual o placeholder para media
   timestamp: string; // ISO 8601
+  // Metadatos de media entrante (image/document/audio). n8n baja el binario de
+  // Meta con estos datos y lo sube a Storage. null cuando no aplica.
+  media_id: string | null;
+  media_mime: string | null;
+  media_filename: string | null;
+}
+
+/** Extrae los metadatos de media segun el tipo (image/document/audio). */
+function extractMedia(msg: MetaMessage): {
+  media_id: string | null;
+  media_mime: string | null;
+  media_filename: string | null;
+} {
+  const media =
+    msg.type === "image"
+      ? msg.image
+      : msg.type === "document"
+        ? msg.document
+        : msg.type === "audio"
+          ? msg.audio
+          : null;
+  if (!media?.id) return { media_id: null, media_mime: null, media_filename: null };
+  return {
+    media_id: media.id,
+    media_mime: media.mime_type ?? null,
+    media_filename:
+      (msg.type === "document" && msg.document?.filename) || null,
+  };
 }
 
 /**
@@ -64,11 +93,13 @@ function extractText(msg: MetaMessage): string {
     case "text":
       return msg.text?.body ?? "";
     case "image":
-      return msg.image?.caption
-        ? `[imagen] ${msg.image.caption}`
-        : `[imagen recibida${msg.image?.id ? ` id=${msg.image.id}` : ""}]`;
+      return msg.image?.caption ? `[imagen] ${msg.image.caption}` : "[imagen]";
+    case "document":
+      return msg.document?.filename
+        ? `[documento] ${msg.document.filename}`
+        : "[documento]";
     case "audio":
-      return `[audio recibido${msg.audio?.id ? ` id=${msg.audio.id}` : ""}]`;
+      return "[audio]";
     case "interactive": {
       const reply = msg.interactive?.button_reply ?? msg.interactive?.list_reply;
       return reply?.title ?? "[respuesta interactiva]";
@@ -116,6 +147,7 @@ export function normalizeIncoming(body: MetaWebhookBody): NormalizedEvent[] {
           type: msg.type ?? "unsupported",
           text: extractText(msg),
           timestamp: iso,
+          ...extractMedia(msg),
         });
       }
     }
