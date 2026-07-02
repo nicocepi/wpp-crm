@@ -8,9 +8,10 @@
 -- ============================================================================
 
 -- 1) Rol en profiles
+-- (el valor 'tenant_admin' se habilita en tenant-admin-role.sql, migración #14)
 alter table public.profiles
   add column if not exists role text not null default 'member'
-    check (role in ('member','admin'));
+    check (role in ('member','admin','tenant_admin'));
 
 -- 2) Helper is_admin() — SECURITY INVOKER (mismo patron que current_tenant_id).
 -- Solo lee la propia fila de profiles (permitida por profiles_self): sin recursion.

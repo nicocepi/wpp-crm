@@ -24,7 +24,7 @@ create table if not exists public.tenants (
 create table if not exists public.profiles (
   user_id uuid primary key references auth.users(id) on delete cascade,
   tenant_id uuid references public.tenants(id) on delete cascade,  -- null = admin (sin tenant)
-  role text not null default 'member' check (role in ('member','admin')),  -- admin ve/edita todos los tenants
+  role text not null default 'member' check (role in ('member','admin','tenant_admin')),  -- admin (global) ve todos; tenant_admin = member con override de handoff
   created_at timestamptz default now(),
   constraint profiles_tenant_role_chk check ((role = 'admin') or (tenant_id is not null))  -- member siempre con tenant
 );

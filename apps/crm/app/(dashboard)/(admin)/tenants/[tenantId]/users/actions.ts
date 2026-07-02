@@ -6,19 +6,26 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 export type UserActionResult = { ok: true } | { ok: false; error: string };
 
+/** Roles asignables desde el ABM de un tenant (el 'admin' global no se crea acá). */
+export type TenantRole = "member" | "tenant_admin";
+
 /**
- * Alta de un usuario member en un tenant. Crea el usuario de Auth (o reusa el
+ * Alta de un usuario en un tenant. Crea el usuario de Auth (o reusa el
  * existente) y lo asocia al tenant via profiles. Solo admin.
+ * Modelo: 1 usuario = 1 tenant. Si el email YA pertenece a otro tenant (o es el
+ * admin global), NO se reasigna: se rechaza con un aviso.
  */
 export async function createTenantUser(
   tenantId: string,
   email: string,
   name?: string,
+  role: TenantRole = "member",
 ): Promise<UserActionResult> {
   if (!(await isAdmin())) return { ok: false, error: "No autorizado" };
   const clean = email.trim().toLowerCase();
   if (!clean || !clean.includes("@")) return { ok: false, error: "Email invalido" };
   const displayName = (name ?? "").trim() || null;
+  const safeRole: TenantRole = role === "tenant_admin" ? "tenant_admin" : "member";
 
   const admin = createAdminClient();
 
@@ -30,7 +37,7 @@ export async function createTenantUser(
 
   let userId = created?.user?.id;
   if (createErr || !userId) {
-    // Si ya existe, buscarlo por email para reasignarlo.
+    // Ya existe en Auth: buscarlo por email (NO reasignar sin validar).
     const { data: list } = await admin.auth.admin.listUsers({
       page: 1,
       perPage: 1000,
@@ -41,13 +48,60 @@ export async function createTenantUser(
     }
   }
 
-  const { error: pErr } = await admin
+  // Validación de duplicado: si ya tiene un profile, no reasignar entre tenants.
+  const { data: existing } = await admin
     .from("profiles")
-    .upsert(
-      { user_id: userId, tenant_id: tenantId, role: "member", display_name: displayName },
-      { onConflict: "user_id" },
-    );
+    .select("tenant_id, role")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (existing) {
+    if (existing.role === "admin") {
+      return { ok: false, error: "Ese email es del administrador global." };
+    }
+    if (existing.tenant_id === tenantId) {
+      return { ok: false, error: "Ese usuario ya existe en este cliente." };
+    }
+    return {
+      ok: false,
+      error:
+        "Ese email ya pertenece a otro cliente. No se puede asignar a dos clientes.",
+    };
+  }
+
+  const { error: pErr } = await admin.from("profiles").insert({
+    user_id: userId,
+    tenant_id: tenantId,
+    role: safeRole,
+    display_name: displayName,
+  });
   if (pErr) return { ok: false, error: pErr.message };
+
+  revalidatePath(`/tenants/${tenantId}/users`);
+  return { ok: true };
+}
+
+/** Cambia el rol de un usuario del tenant (member <-> tenant_admin). Solo admin. */
+export async function setTenantUserRole(
+  tenantId: string,
+  userId: string,
+  role: TenantRole,
+): Promise<UserActionResult> {
+  if (!(await isAdmin())) return { ok: false, error: "No autorizado" };
+  const safeRole: TenantRole = role === "tenant_admin" ? "tenant_admin" : "member";
+
+  const admin = createAdminClient();
+  // Solo dentro del tenant y sin tocar al admin global.
+  const { data, error } = await admin
+    .from("profiles")
+    .update({ role: safeRole })
+    .eq("user_id", userId)
+    .eq("tenant_id", tenantId)
+    .neq("role", "admin")
+    .select("user_id");
+  if (error) return { ok: false, error: error.message };
+  if (!data || data.length === 0) {
+    return { ok: false, error: "No se pudo cambiar el rol" };
+  }
 
   revalidatePath(`/tenants/${tenantId}/users`);
   return { ok: true };

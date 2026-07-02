@@ -6,11 +6,13 @@ import { getCurrentTenant } from "@/lib/tenant";
 import { readFlowState, ATTENTION_LABEL, URGENT_LABEL } from "@/lib/types";
 import type { Message } from "@/lib/types";
 
-/** Identidad del usuario logueado para el ownership del handoff. */
+/** Identidad del usuario logueado para el ownership del handoff.
+ *  canOverride: puede tomar/liberar la conversación de OTRO agente
+ *  (admin global o tenant_admin del tenant). */
 async function currentAgent(): Promise<{
   userId: string;
   name: string;
-  isAdmin: boolean;
+  canOverride: boolean;
 } | null> {
   const supabase = await createClient();
   const {
@@ -26,17 +28,19 @@ async function currentAgent(): Promise<{
     (profile?.display_name && profile.display_name.trim()) ||
     user.email ||
     "Agente";
-  return { userId: user.id, name, isAdmin: profile?.role === "admin" };
+  const canOverride =
+    profile?.role === "admin" || profile?.role === "tenant_admin";
+  return { userId: user.id, name, canOverride };
 }
 
 /** Devuelve un mensaje de error si el agente NO puede responder esta
- *  conversación (no es el dueño ni admin), o null si puede. */
+ *  conversación (no es el dueño ni tiene override), o null si puede. */
 function ownershipError(
   contact: { handoff_by: string | null; handoff_by_name: string | null },
-  agent: { userId: string; isAdmin: boolean } | null,
+  agent: { userId: string; canOverride: boolean } | null,
 ): string | null {
   if (!agent) return "Sesión no válida";
-  if (agent.isAdmin) return null;
+  if (agent.canOverride) return null;
   if (!contact.handoff_by) return "Tomá el control primero para responder.";
   if (contact.handoff_by === agent.userId) return null;
   return `La está atendiendo ${contact.handoff_by_name ?? "otro agente"}.`;
@@ -384,8 +388,8 @@ export async function setHandoff(
           handoff_at: new Date().toISOString(),
         })
         .eq("id", contactId);
-      // member: solo si está libre; admin: puede forzar (reasignar a sí mismo).
-      const q = agent.isAdmin ? base : base.is("handoff_by", null);
+      // member: solo si está libre; admin/tenant_admin: puede forzar (reasignar a sí mismo).
+      const q = agent.canOverride ? base : base.is("handoff_by", null);
       const { data: claimed, error } = await q.select("id");
       if (error) return { ok: false, error: error.message };
       if (!claimed || claimed.length === 0) {
@@ -396,8 +400,8 @@ export async function setHandoff(
       }
     }
   } else {
-    // LIBERAR. Bloqueado si la tiene otro y no soy admin.
-    if (contact.handoff_by && contact.handoff_by !== agent.userId && !agent.isAdmin) {
+    // LIBERAR. Bloqueado si la tiene otro y no tengo override.
+    if (contact.handoff_by && contact.handoff_by !== agent.userId && !agent.canOverride) {
       return {
         ok: false,
         error: `La está atendiendo ${contact.handoff_by_name ?? "otro agente"}.`,

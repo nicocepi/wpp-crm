@@ -45,14 +45,14 @@ export function ConversationSheet({
   onOpenChange,
   onToggleHandoff,
   currentUserId,
-  isAdmin,
+  canOverride,
 }: {
   contact: ContactWithLabels | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onToggleHandoff: (contact: ContactWithLabels, on: boolean) => Promise<void>;
   currentUserId: string;
-  isAdmin: boolean;
+  canOverride: boolean;
 }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
@@ -70,9 +70,9 @@ export function ConversationSheet({
   const owned = contact ? isOwnedByMe(contact, currentUserId) : false;
   const taken = contact ? isTaken(contact) : false;
   const takenByOther = taken && !owned;
-  const lockedForMe = takenByOther && !isAdmin;
-  // Puedo escribir si la tengo yo (o soy admin). Si no, solo lectura.
-  const canCompose = owned || isAdmin;
+  const lockedForMe = takenByOther && !canOverride;
+  // Puedo escribir si la tengo yo (o tengo override). Si no, solo lectura.
+  const canCompose = owned || canOverride;
 
   // Firma las URLs de los mensajes con media que aún no estén en cache.
   const ensureSignedUrls = useCallback(async (msgs: Message[]) => {
@@ -282,7 +282,7 @@ export function ConversationSheet({
               <div className="border-b bg-zinc-100 px-4 py-2 text-xs text-zinc-600">
                 Lo está atendiendo{" "}
                 <strong>{contact.handoff_by_name ?? "otro agente"}</strong>.{" "}
-                {isAdmin ? "Podés tomar el control." : "Solo lectura."}
+                {canOverride ? "Podés tomar el control." : "Solo lectura."}
               </div>
             )}
             {handoff && !taken && (

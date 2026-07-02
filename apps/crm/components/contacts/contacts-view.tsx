@@ -33,14 +33,14 @@ export function ContactsView({
   labels,
   currentUserId,
   currentUserName,
-  isAdmin,
+  canOverride,
 }: {
   tenantId: string;
   initialContacts: ContactWithLabels[];
   labels: Label[];
   currentUserId: string;
   currentUserName: string;
-  isAdmin: boolean;
+  canOverride: boolean;
 }) {
   const [contacts, setContacts] = useState<ContactWithLabels[]>(initialContacts);
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
@@ -321,7 +321,7 @@ export function ContactsView({
                 key={contact.id}
                 contact={contact}
                 allLabels={labels}
-                locked={isLockedFor(contact, currentUserId, isAdmin)}
+                locked={isLockedFor(contact, currentUserId, canOverride)}
                 onOpen={openContact}
                 onRename={onRename}
                 onNeeds={onNeeds}
@@ -339,7 +339,7 @@ export function ContactsView({
         onOpenChange={setSheetOpen}
         onToggleHandoff={onToggleHandoff}
         currentUserId={currentUserId}
-        isAdmin={isAdmin}
+        canOverride={canOverride}
       />
     </div>
   );

@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import type { Tenant } from "@/lib/types";
 
-export type Role = "member" | "admin";
+export type Role = "member" | "admin" | "tenant_admin";
 
 export const IMPERSONATE_COOKIE = "act_as_tenant";
 
@@ -36,7 +36,12 @@ export async function getCurrentProfile(): Promise<CurrentProfile | null> {
     .eq("user_id", user.id)
     .single();
 
-  const role: Role = profile?.role === "admin" ? "admin" : "member";
+  const role: Role =
+    profile?.role === "admin"
+      ? "admin"
+      : profile?.role === "tenant_admin"
+        ? "tenant_admin"
+        : "member";
 
   // Tenant efectivo: el impersonado (solo admin) o el propio del profile.
   let tenantId: string | null = profile?.tenant_id ?? null;

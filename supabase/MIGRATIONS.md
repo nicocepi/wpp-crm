@@ -19,6 +19,7 @@ Los cambios de base se aplican corriendo estos archivos **en orden** en el SQL E
 | 11 | `impersonation-rls.sql` | `is_impersonating()` + redefine `current_tenant_id()` (honra header) + recrea policies: el bypass de admin se desactiva mientras impersona. |
 | 12 | `chat-attachments.sql` | Columnas `messages.media_url/media_mime/media_filename` + bucket privado `chat-attachments` + Storage RLS (lectura por tenant). |
 | 13 | `multi-agent-handoff.sql` | `contacts.handoff_by/handoff_by_name/handoff_at` (ownership del handoff) + `profiles.display_name`. |
+| 14 | `tenant-admin-role.sql` | Amplía el CHECK de `profiles.role` para incluir `tenant_admin` (admin por-tenant: override de handoff, no admin global). |
 
 ## Nota sobre `schema.sql` (drift)
 `schema.sql` es un **snapshot al día** del esquema completo (incluye lo que agregan las

@@ -6,7 +6,12 @@ import { toast } from "sonner";
 import { Mail, Trash2, UserPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { createTenantUser, deleteTenantUser } from "./actions";
+import {
+  createTenantUser,
+  deleteTenantUser,
+  setTenantUserRole,
+  type TenantRole,
+} from "./actions";
 
 export type TenantUser = {
   userId: string;
@@ -14,6 +19,12 @@ export type TenantUser = {
   role: string;
   displayName: string | null;
   createdAt: string | null;
+};
+
+const ROLE_LABEL: Record<string, string> = {
+  member: "Miembro",
+  tenant_admin: "Admin",
+  admin: "Admin global",
 };
 
 export function UsersManager({
@@ -28,13 +39,14 @@ export function UsersManager({
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
+  const [role, setRole] = useState<TenantRole>("member");
   const [pending, startTransition] = useTransition();
 
   function add() {
     const value = email.trim();
     if (!value) return;
     startTransition(async () => {
-      const res = await createTenantUser(tenantId, value, name.trim());
+      const res = await createTenantUser(tenantId, value, name.trim(), role);
       if (!res.ok) {
         toast.error(res.error);
         return;
@@ -42,6 +54,20 @@ export function UsersManager({
       toast.success("Usuario agregado");
       setEmail("");
       setName("");
+      setRole("member");
+      router.refresh();
+    });
+  }
+
+  function changeRole(u: TenantUser, next: TenantRole) {
+    if (next === u.role) return;
+    startTransition(async () => {
+      const res = await setTenantUserRole(tenantId, u.userId, next);
+      if (!res.ok) {
+        toast.error(res.error);
+        return;
+      }
+      toast.success("Rol actualizado");
       router.refresh();
     });
   }
@@ -91,13 +117,22 @@ export function UsersManager({
               }
             }}
           />
+          <select
+            value={role}
+            onChange={(e) => setRole(e.target.value as TenantRole)}
+            className="h-10 rounded-md border bg-background px-2 text-sm"
+          >
+            <option value="member">Miembro</option>
+            <option value="tenant_admin">Admin</option>
+          </select>
           <Button onClick={add} disabled={pending || !email.trim()}>
             <UserPlus className="h-4 w-4" /> Agregar
           </Button>
         </div>
         <p className="mt-1 text-xs text-muted-foreground">
-          Se crea como <strong>member</strong> del tenant. Ingresa con magic link
-          desde el login.
+          Ingresa con magic link desde el login. <strong>Admin</strong> puede
+          tomar/liberar conversaciones de otros agentes; <strong>Miembro</strong>{" "}
+          solo las propias.
         </p>
       </div>
 
@@ -127,9 +162,23 @@ export function UsersManager({
                   </span>
                 </td>
                 <td className="px-3 py-2">
-                  <span className="rounded-full bg-muted px-2 py-0.5 text-xs">
-                    {u.role}
-                  </span>
+                  {u.role === "member" || u.role === "tenant_admin" ? (
+                    <select
+                      value={u.role}
+                      onChange={(e) =>
+                        changeRole(u, e.target.value as TenantRole)
+                      }
+                      disabled={pending}
+                      className="rounded-md border bg-background px-2 py-1 text-xs"
+                    >
+                      <option value="member">Miembro</option>
+                      <option value="tenant_admin">Admin</option>
+                    </select>
+                  ) : (
+                    <span className="rounded-full bg-muted px-2 py-0.5 text-xs">
+                      {ROLE_LABEL[u.role] ?? u.role}
+                    </span>
+                  )}
                 </td>
                 <td className="px-3 py-2 text-right">
                   <Button

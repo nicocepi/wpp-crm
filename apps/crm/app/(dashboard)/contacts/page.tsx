@@ -16,9 +16,10 @@ export default async function ContactsPage() {
   // Admin sin tenant (no impersonando): no tiene contactos propios -> a tenants.
   if (!tenant) redirect("/tenants");
   const currentUserId = profile?.userId ?? "";
-  // El admin puede forzar liberar/tomar (incluso impersonando): es su vía para
-  // destrabar una conversación de un agente desconectado. Coincide con el server.
-  const isAdmin = profile?.role === "admin";
+  // canOverride: puede tomar/liberar una conversación ajena. Lo tienen el admin
+  // global (incluso impersonando) y el tenant_admin. Coincide con el server.
+  const canOverride =
+    profile?.role === "admin" || profile?.role === "tenant_admin";
 
   const supabase = await createClient();
 
@@ -51,7 +52,7 @@ export default async function ContactsPage() {
       labels={labels}
       currentUserId={currentUserId}
       currentUserName={profile?.displayName ?? "Vos"}
-      isAdmin={isAdmin}
+      canOverride={canOverride}
     />
   );
 }
