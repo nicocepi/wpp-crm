@@ -71,8 +71,9 @@ export function ConversationSheet({
   const taken = contact ? isTaken(contact) : false;
   const takenByOther = taken && !owned;
   const lockedForMe = takenByOther && !canOverride;
-  // Puedo escribir si la tengo yo (o tengo override). Si no, solo lectura.
-  const canCompose = owned || canOverride;
+  // Para ESCRIBIR hay que ser el dueño (también el admin: primero toma el
+  // control). El override solo habilita tomar/liberar ajenas, no escribir.
+  const canCompose = owned;
 
   // Firma las URLs de los mensajes con media que aún no estén en cache.
   const ensureSignedUrls = useCallback(async (msgs: Message[]) => {
@@ -335,7 +336,7 @@ export function ConversationSheet({
 
             {!canCompose ? (
               <div className="border-t px-4 py-3 text-center text-xs text-muted-foreground">
-                {takenByOther
+                {lockedForMe
                   ? `Solo lectura — la está atendiendo ${contact.handoff_by_name ?? "otro agente"}.`
                   : "Tomá el control para responder."}
               </div>

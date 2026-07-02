@@ -34,16 +34,17 @@ async function currentAgent(): Promise<{
 }
 
 /** Devuelve un mensaje de error si el agente NO puede responder esta
- *  conversación (no es el dueño ni tiene override), o null si puede. */
+ *  conversación, o null si puede. Para ENVIAR hay que ser el dueño: el override
+ *  (admin/tenant_admin) sirve para tomar/liberar ajenas, no para escribir sin
+ *  haberla tomado. Es decir, hasta el admin debe tomar el control primero. */
 function ownershipError(
   contact: { handoff_by: string | null; handoff_by_name: string | null },
-  agent: { userId: string; canOverride: boolean } | null,
+  agent: { userId: string } | null,
 ): string | null {
   if (!agent) return "Sesión no válida";
-  if (agent.canOverride) return null;
-  if (!contact.handoff_by) return "Tomá el control primero para responder.";
   if (contact.handoff_by === agent.userId) return null;
-  return `La está atendiendo ${contact.handoff_by_name ?? "otro agente"}.`;
+  if (!contact.handoff_by) return "Tomá el control primero para responder.";
+  return `La está atendiendo ${contact.handoff_by_name ?? "otro agente"}. Tomá el control para responder.`;
 }
 
 export type AgentActionResult =
