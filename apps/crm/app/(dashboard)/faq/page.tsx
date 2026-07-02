@@ -46,10 +46,6 @@ const AVOID_BAN: QA[] = [
     a: "Escribí solo a quien te pidió contacto, con mensajes útiles y esperados. No repitas envíos ni satures. Si vas a llegar a muchos, empezá gradualmente por tus contactos más comprometidos, no por una lista fría enorme de golpe. Mantené la tasa de bloqueos por debajo de ~2-3%.",
   },
   {
-    q: "¿Puedo mandar promociones o marketing?",
-    a: "Sí, pero con plantillas de categoría marketing y solo a quien dio consentimiento. Meta limita las plantillas de marketing a aproximadamente 2 por usuario por día (contando todos los negocios). Si te pasás, el mensaje se bloquea (error 131049). Usá el marketing con moderación y relevancia.",
-  },
-  {
     q: "¿Qué contenido está prohibido?",
     a: "Todo lo que viole las políticas de Meta (Commerce Policy, Business Messaging Policy y Acceptable Use): productos ilegales, drogas, armas, tabaco/alcohol sin restricción, contenido sexual, estafas, y pedir datos sensibles innecesarios (contraseñas, datos de tarjeta completos, etc.). Ante la duda, no lo mandes.",
   },
