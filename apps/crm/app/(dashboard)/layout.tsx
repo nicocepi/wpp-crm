@@ -7,6 +7,7 @@ import { signOut, stopImpersonating } from "./actions";
 const MEMBER_NAV: NavItem[] = [
   { href: "/contacts", label: "Contactos", icon: "contacts" },
   { href: "/metrics", label: "Métricas", icon: "stats" },
+  { href: "/faq", label: "Preguntas frecuentes", icon: "help" },
 ];
 const ADMIN_NAV: NavItem[] = [
   { href: "/tenants", label: "Tenants", icon: "tenants" },

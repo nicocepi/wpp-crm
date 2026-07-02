@@ -2,7 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Users, Building2, BarChart3, ScrollText, type LucideIcon } from "lucide-react";
+import {
+  Users,
+  Building2,
+  BarChart3,
+  ScrollText,
+  HelpCircle,
+  type LucideIcon,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export type NavItem = { href: string; label: string; icon: keyof typeof ICONS };
@@ -12,6 +19,7 @@ const ICONS = {
   tenants: Building2,
   stats: BarChart3,
   logs: ScrollText,
+  help: HelpCircle,
 } satisfies Record<string, LucideIcon>;
 
 export function SidebarNav({ items }: { items: NavItem[] }) {
