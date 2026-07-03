@@ -58,6 +58,10 @@ export async function POST(req: Request) {
 
   // Re-check autoritativo: solo alertar si sigue en handoff y SIN asignar.
   if (contact.handoff !== true || contact.handoff_by != null) {
+    console.log("[handoff-alert] skipped (atendida/liberada)", {
+      contact_id: contactId,
+      phone: contact.phone,
+    });
     return NextResponse.json({ skipped: "atendida o liberada" });
   }
 
@@ -68,43 +72,63 @@ export async function POST(req: Request) {
     .maybeSingle();
   const to = (cfg?.alert_email ?? "").trim();
   if (!to) {
+    console.log("[handoff-alert] skipped (sin casilla)", {
+      contact_id: contactId,
+    });
     return NextResponse.json({ skipped: "sin casilla configurada" });
   }
 
   const requestedAt = formatAR(body.requested_at);
   const resumen =
     (contact.needs && contact.needs.trim()) ||
-    "Sin resumen — el cliente pidió hablar con un representante.";
+    "Sin resumen (el cliente pidio hablar con un representante).";
 
-  const subject = `⚠️ Pedido de agente sin atender — ${contact.phone}`;
+  // Asunto ASCII simple (sin emoji/guion largo) para no gatillar filtros de spam.
+  const subject = `Pedido de agente sin atender - ${contact.phone}`;
   const text = [
-    "Un cliente pidió hablar con un agente y sigue sin atención.",
+    "Un cliente pidio hablar con un agente y sigue sin atencion.",
     "",
-    `Teléfono: ${contact.phone}`,
+    `Telefono: ${contact.phone}`,
     `Solicitado: ${requestedAt}`,
     `Resumen (IA): ${resumen}`,
     "",
-    "Ingresá al CRM para tomar la conversación.",
+    "Ingresa al CRM para tomar la conversacion.",
   ].join("\n");
   const html = `
     <div style="font-family:system-ui,Arial,sans-serif;font-size:14px;color:#111">
-      <p>Un cliente pidió hablar con un agente y <strong>sigue sin atención</strong>.</p>
+      <p>Un cliente pidio hablar con un agente y <strong>sigue sin atencion</strong>.</p>
       <table style="border-collapse:collapse">
-        <tr><td style="padding:2px 8px;color:#666">Teléfono</td><td style="padding:2px 8px"><strong>${contact.phone}</strong></td></tr>
+        <tr><td style="padding:2px 8px;color:#666">Telefono</td><td style="padding:2px 8px"><strong>${contact.phone}</strong></td></tr>
         <tr><td style="padding:2px 8px;color:#666">Solicitado</td><td style="padding:2px 8px">${requestedAt}</td></tr>
         <tr><td style="padding:2px 8px;color:#666;vertical-align:top">Resumen (IA)</td><td style="padding:2px 8px">${resumen}</td></tr>
       </table>
-      <p style="color:#666">Ingresá al CRM para tomar la conversación.</p>
+      <p style="color:#666">Ingresa al CRM para tomar la conversacion.</p>
     </div>`;
 
   try {
-    await sendEmail({ to, subject, text, html });
+    const info = await sendEmail({ to, subject, text, html });
+    console.log("[handoff-alert] sent", {
+      to,
+      phone: contact.phone,
+      messageId: info.messageId,
+      accepted: info.accepted,
+      rejected: info.rejected,
+      response: info.response,
+    });
+    return NextResponse.json({
+      sent: true,
+      messageId: info.messageId,
+      accepted: info.accepted,
+      rejected: info.rejected,
+    });
   } catch (e) {
+    console.error("[handoff-alert] error SMTP", {
+      to,
+      error: e instanceof Error ? e.message : String(e),
+    });
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Fallo el envío" },
       { status: 502 },
     );
   }
-
-  return NextResponse.json({ sent: true });
 }

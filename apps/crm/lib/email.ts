@@ -21,19 +21,32 @@ function getTransport() {
   });
 }
 
+export type SendResult = {
+  messageId?: string;
+  accepted: string[];
+  rejected: string[];
+  response?: string;
+};
+
 export async function sendEmail(opts: {
   to: string;
   subject: string;
   text: string;
   html?: string;
-}): Promise<void> {
+}): Promise<SendResult> {
   const from = process.env.SMTP_FROM || process.env.SMTP_USER!;
   const transport = getTransport();
-  await transport.sendMail({
+  const info = await transport.sendMail({
     from,
     to: opts.to,
     subject: opts.subject,
     text: opts.text,
     html: opts.html,
   });
+  return {
+    messageId: info.messageId,
+    accepted: (info.accepted as string[]) ?? [],
+    rejected: (info.rejected as string[]) ?? [],
+    response: info.response,
+  };
 }
