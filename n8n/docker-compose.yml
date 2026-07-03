@@ -55,6 +55,9 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       WHATSAPP_API_TOKEN: ${WHATSAPP_API_TOKEN}
       N8N_WEBHOOK_SECRET: ${N8N_WEBHOOK_SECRET}
+      # Alerta de handoff: n8n postea al CRM (host) al vencer el delay.
+      CRM_BASE_URL: ${CRM_BASE_URL:-http://host.docker.internal:3000}
+      HANDOFF_ALERT_SECRET: ${HANDOFF_ALERT_SECRET}
     volumes:
       - n8n_data:/home/node/.n8n
 
