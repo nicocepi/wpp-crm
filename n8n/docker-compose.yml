@@ -18,7 +18,12 @@ services:
     image: n8nio/n8n:latest
     restart: unless-stopped
     ports:
-      - "5678:5678"
+      # Solo loopback: Docker manipula iptables y puede saltarse ufw si se
+      # publica en 0.0.0.0. El proxy (Caddy) llega por 127.0.0.1.
+      - "127.0.0.1:5678:5678"
+    extra_hosts:
+      # host.docker.internal en Linux (Docker Desktop lo trae solo en Mac/Win).
+      - "host.docker.internal:host-gateway"
     depends_on:
       n8n-db:
         condition: service_healthy
