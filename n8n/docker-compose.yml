@@ -46,6 +46,11 @@ services:
       GENERIC_TIMEZONE: ${TZ:-America/Argentina/Buenos_Aires}
       N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:?define N8N_ENCRYPTION_KEY en n8n/.env}
 
+      # Poda de ejecuciones: sin esto el historial crece indefinidamente y
+      # llena el disco. Guarda 14 dias.
+      EXECUTIONS_DATA_PRUNE: ${EXECUTIONS_DATA_PRUNE:-true}
+      EXECUTIONS_DATA_MAX_AGE: ${EXECUTIONS_DATA_MAX_AGE:-336}
+
       # IMPORTANTE: permite leer $env dentro de los nodos (el workflow lo usa).
       N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
 
