@@ -15,9 +15,21 @@ function safeNext(raw: string | null): string {
 }
 
 export async function GET(request: Request) {
-  const { searchParams, origin } = new URL(request.url);
-  const code = searchParams.get("code");
-  const next = safeNext(searchParams.get("next"));
+  const url = new URL(request.url);
+  const code = url.searchParams.get("code");
+  const next = safeNext(url.searchParams.get("next"));
+
+  // request.url no refleja el Host real detras de un reverse proxy: "next start"
+  // construye la URL con el hostname/puerto del bind (localhost:3000), no con el
+  // header Host de la request entrante. Reconstruimos el origin publico desde
+  // los headers forwarded (Cloudflare/Caddy los setean).
+  const host =
+    request.headers.get("x-forwarded-host") ??
+    request.headers.get("host") ??
+    url.host;
+  const proto =
+    request.headers.get("x-forwarded-proto") ?? url.protocol.replace(":", "");
+  const origin = `${proto}://${host}`;
 
   if (code) {
     const supabase = await createClient();
