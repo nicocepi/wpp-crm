@@ -36,7 +36,7 @@ Meta WhatsApp ──► apps/webhook (Express) ──► n8n ──► Supabase 
 - [Regenerar / re-importar el workflow de n8n](#regenerar--re-importar-el-workflow-de-n8n)
 - [Seguridad](#seguridad)
 - [Deploy](#deploy)
-- [Referencia rápida (local)](#referencia-rápida-local)
+- [Referencia rápida](#referencia-rápida)
 
 ---
 
@@ -47,21 +47,31 @@ Meta WhatsApp ──► apps/webhook (Express) ──► n8n ──► Supabase 
   - **Menú guiado** (`flow_type='menu'`): árbol de nodos data-driven, navegación
     secuencial, "volver a empezar", mute por día, editable por tenant.
   - **IA** (`flow_type='ai'`): Claude responde libre según un system prompt.
-- **Handoff a humano:** el agente toma el control (pausa el bot), responde desde
-  el CRM y reactiva el bot al terminar. Resumen IA del recorrido en la caja de
-  descripción, labels automáticas ("Necesita agente", "Urgente" clasificada por
-  IA) y campanita de aviso.
+- **Handoff a humano, multi-agente:** el agente toma el control (pausa el bot),
+  responde desde el CRM y reactiva el bot al terminar. Resumen IA del recorrido
+  en la caja de descripción, labels automáticas ("Necesita agente", "Urgente"
+  clasificada por IA) y campanita de aviso. Con varios agentes por tenant, el
+  que toma el control **bloquea** la conversación para el resto (solo lectura)
+  y la tarjeta muestra quién la atiende (`handoff_by`/`handoff_by_name`).
+- **Alertas de handoff por email:** si un pedido de agente sigue sin atender
+  pasados N minutos (configurable por tenant), llega un mail con teléfono, hora
+  del pedido y resumen IA — para no depender de tener el CRM abierto.
 - **Adjuntos en el chat:** el agente **envía** imágenes (PNG/JPG/WEBP) y PDF; se
   **reciben** imágenes, PDF y **audios** (notas de voz). Bucket privado + URL
   firmada.
-- **Roles y admin:** usuarios `member` (ven solo su tenant) y `admin` (ve todos
+- **Roles y admin:** `member` (ve solo su tenant), `tenant_admin` (member + puede
+  tomar/liberar conversaciones ajenas de su tenant) y `admin` global (ve todos
   los tenants, estadísticas globales y config de cada uno).
 - **Impersonación:** el admin "ingresa como" un tenant y usa la vista del member,
   acotado por RLS (no solo por filtro en el server).
-- **ABM de usuarios** por tenant (alta/baja/listado, con Auth admin API).
+- **ABM de usuarios** por tenant (alta/baja/listado, con Auth admin API). Valida
+  que el email no pertenezca ya a otro tenant o al admin global antes de
+  asignarlo (no reasigna en silencio).
 - **Logo por tenant** (Storage) visible en el panel del member.
 - **Métricas por tenant:** cuánta gente escribió, top motivos (nodo de menú),
   % de handoff (bot vs. agente) y mensajes fallidos.
+- **Preguntas frecuentes** por tenant: reglas esenciales de WhatsApp Cloud API
+  para no perder el número + buenas prácticas del CRM.
 - **Logging/observabilidad:** `messages`, `failed_messages` y un log durable
   `event_logs` (decisiones del flujo y envíos) con una vista **Logs** (admin).
 - **Realtime:** los contactos y mensajes se actualizan en vivo (Supabase Realtime).
@@ -73,8 +83,9 @@ Meta WhatsApp ──► apps/webhook (Express) ──► n8n ──► Supabase 
 - **DB + Auth + Realtime + Storage**: Supabase (Postgres + RLS).
 - **Webhook**: Node.js + Express (TypeScript).
 - **Orquestación**: n8n (Docker), workflow generado por script.
-- **IA**: Claude API (Anthropic) con prompt caching.
+- **IA**: Claude API (Anthropic), modelo Haiku 4.5, con prompt caching.
 - **Tooling**: pnpm workspaces, Node ≥ 20.
+- **Producción**: VPS propio (systemd + Docker + Caddy) detrás de Cloudflare.
 
 ## Estructura del monorepo
 
@@ -171,6 +182,9 @@ Tres lugares (todos gitignoreados). Nunca commitear secretos.
 | Meta | `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_APP_SECRET` | webhook (`.env` raíz o `apps/webhook/.env`) |
 | n8n | `N8N_BASE_URL`, `N8N_WEBHOOK_SECRET` | webhook |
 | n8n | `SUPABASE_URL`, `ANTHROPIC_API_KEY`, `WHATSAPP_API_TOKEN`, `N8N_WEBHOOK_SECRET`, `N8N_ENCRYPTION_KEY`, `POSTGRES_*` | `n8n/.env` |
+| n8n | `CRM_BASE_URL`, `HANDOFF_ALERT_SECRET` | `n8n/.env` (POST al CRM cuando vence el delay de alerta) |
+| n8n | `EXECUTIONS_DATA_PRUNE`, `EXECUTIONS_DATA_MAX_AGE` | `n8n/.env` (poda de ejecuciones; deben estar en `environment:` del compose) |
+| Alertas | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`, `HANDOFF_ALERT_SECRET` | `apps/crm/.env.local` (envío del mail vía nodemailer) |
 
 > El CRM usa `SUPABASE_SERVICE_ROLE_KEY` **solo** en el server, detrás de
 > `isAdmin()` (gestión de usuarios). El token de Meta también es server-only.
@@ -218,6 +232,9 @@ Login por **magic link** (email vía Supabase Auth). El member ve **Contactos** 
 
 - **member**: siempre ligado a un tenant; ve solo lo suyo (RLS
   `tenant_id = current_tenant_id()`).
+- **tenant_admin**: igual que `member` (mismo tenant, mismo scope de RLS), pero
+  puede tomar/liberar conversaciones que otro agente ya tomó (override de
+  handoff). No es admin global: no ve otros tenants.
 - **admin**: `tenant_id` null; ve todos los tenants
   (`... or (is_admin() and not is_impersonating())`).
 - **Impersonación**: el admin setea una cookie httpOnly `act_as_tenant`; el CRM
@@ -232,7 +249,13 @@ Login por **magic link** (email vía Supabase Auth). El member ve **Contactos** 
   Se edita en Configuración; n8n lo interpreta en el nodo *Menu engine*.
 - **Handoff**: columna `contacts.handoff` (dedicada, para evitar el race con
   n8n). El agente responde desde el compositor del chat; resumen IA + labels
-  automáticas al derivar.
+  automáticas al derivar. **Ownership**: `handoff_by`/`handoff_by_name` (quién
+  la tomó); solo el dueño puede responder (el override de `tenant_admin`/`admin`
+  solo habilita tomar/liberar, no escribir sin tomar primero).
+- **Alertas de handoff**: `bot_configs.alert_email`/`alert_delay_minutes` por
+  tenant. n8n programa el delay tras derivar; al vencer, hace `POST` a
+  `/api/handoff-alert` del CRM (secreto compartido), que **re-chequea** que
+  siga sin asignar y envía el mail (nodemailer, SMTP propio).
 - **Adjuntos**: enviar imágenes ≤5MB / PDF ≤16MB (validados por magic-numbers);
   recibir imágenes/PDF/audios (n8n los baja de Meta y sube a Storage). Bucket
   privado con RLS por tenant; se firman URLs on-demand.
@@ -257,6 +280,9 @@ Orden canónico (detalle en [`supabase/MIGRATIONS.md`](supabase/MIGRATIONS.md)):
 | 10 | `handoff-column.sql` | `contacts.handoff` + CHECK rol↔tenant. |
 | 11 | `impersonation-rls.sql` | `is_impersonating()` + RLS que respeta la impersonación. |
 | 12 | `chat-attachments.sql` | `messages.media_*` + bucket privado + Storage RLS. |
+| 13 | `multi-agent-handoff.sql` | `contacts.handoff_by/handoff_by_name/handoff_at` (ownership) + `profiles.display_name`. |
+| 14 | `tenant-admin-role.sql` | Amplía el CHECK de `profiles.role` para incluir `tenant_admin`. |
+| 15 | `handoff-alert-config.sql` | `bot_configs.alert_email`/`alert_delay_minutes` (alertas de handoff). |
 
 > `schema.sql` es un **snapshot** e incluye lo que agregan varios deltas; los
 > deltas solo hacen falta para actualizar una base creada antes de cada cambio.
@@ -296,21 +322,53 @@ docker restart n8n-n8n-1
 
 ## Deploy
 
-- **CRM → Vercel**: importá `apps/crm`, seteá las env de Supabase + Meta +
-  `NEXT_PUBLIC_APP_URL`. En Supabase → Auth → URL Configuration agregá tu dominio
-  a **Redirect URLs** (`https://tu-dominio/auth/callback`).
-- **Webhook → host Node**: `pnpm build:webhook` + `node apps/webhook/dist/index.js`
-  detrás de HTTPS con un dominio estable.
-- **n8n → VPS**: el `docker-compose.yml` de `n8n/` detrás de un proxy con TLS.
+Este proyecto corre en producción en un **VPS propio** (no Vercel), detrás de
+**Cloudflare** (proxied, modo Flexible: Cloudflare habla HTTPS con el navegador
+y HTTP plano con el VPS — no hace falta certificado en el VPS).
 
-> **Pendiente antes de producción**: rotar los secretos y moverlos a un secret
-> manager; dominio estable en vez de ngrok.
+- **CRM y webhook**: `systemd` (auto-restart, arrancan solos al bootear).
+  ```bash
+  # CRM (usar el binario real de next, no node_modules/.bin/next — es un shim)
+  ExecStart=/usr/bin/node /opt/wpp-crm/apps/crm/node_modules/next/dist/bin/next start -p 3000
+  # Webhook
+  ExecStart=/usr/bin/node /opt/wpp-crm/apps/webhook/dist/index.js
+  ```
+- **n8n + Postgres**: Docker Compose (`n8n/docker-compose.yml`), puerto
+  **bindeado a `127.0.0.1`** (no `0.0.0.0`: Docker manipula iptables y puede
+  saltarse `ufw`) + `extra_hosts: host.docker.internal:host-gateway` (Linux no
+  lo trae por defecto, a diferencia de Docker Desktop).
+- **Caddy** como reverse proxy en `:80`, HTTP plano (`auto_https off`), un
+  `server_name:80 { reverse_proxy 127.0.0.1:PUERTO }` por subdominio.
+- **Firewall**: `ufw` (solo `22`/`80`) + `fail2ban`.
+- **Deploy de un cambio**:
+  ```bash
+  ssh usuario@vps
+  cd /opt/wpp-crm && git pull
+  pnpm build:crm && systemctl restart wpp-crm      # o build:webhook + restart wpp-webhook
+  ```
+  Para un cambio en el workflow de n8n: regenerar (`node n8n/build-workflow.mjs`),
+  re-importar con el mismo `id` (ver [comandos](#regenerar--re-importar-el-workflow-de-n8n))
+  y `docker compose up -d --force-recreate n8n`.
+- En Supabase → Auth → URL Configuration, agregar el dominio del CRM a
+  **Redirect URLs** (`https://tu-dominio/auth/callback`) y actualizar el
+  **Site URL**.
 
-## Referencia rápida (local)
+> ⚠️ **Bug conocido y resuelto**: bajo `next start`, `request.url` en un Route
+> Handler **no refleja el header `Host` real** detrás de un reverse proxy (usa
+> el hostname/puerto del propio bind). El callback de auth (`app/auth/callback/route.ts`)
+> reconstruye el origin desde `NEXT_PUBLIC_APP_URL` (fuente de verdad) con
+> fallback a headers `x-forwarded-*` — cualquier Route Handler que arme URLs
+> absolutas para redirects debe hacer lo mismo, nunca confiar en `request.url` a ciegas.
 
-| Servicio | Puerto | Levantar |
+> **Pendiente**: pasar Cloudflare de Flexible a Full/Full strict (cifra también
+> el tramo Cloudflare↔VPS); rotar las credenciales de negocio (Supabase, Meta,
+> Anthropic, SMTP) — los secretos *internos* (n8n) ya se rotaron al desplegar.
+
+## Referencia rápida
+
+| Servicio | Local | Producción |
 |---|---|---|
-| CRM (Next.js) | 3000 | `pnpm dev:crm` |
-| Webhook (Express) | 8080 | `pnpm dev:webhook` |
-| n8n | 5678 | `cd n8n && docker compose up -d` |
-| Túnel a Meta | — | `ngrok http 8080` |
+| CRM (Next.js) | `pnpm dev:crm` → :3000 | `systemctl restart wpp-crm` |
+| Webhook (Express) | `pnpm dev:webhook` → :8080 | `systemctl restart wpp-webhook` |
+| n8n | `cd n8n && docker compose up -d` → :5678 | `docker compose up -d --force-recreate n8n` |
+| Exponer el webhook a Meta | `ngrok http 8080` | dominio propio vía Cloudflare/Caddy |
