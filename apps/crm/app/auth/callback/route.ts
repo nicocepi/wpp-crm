@@ -21,15 +21,17 @@ export async function GET(request: Request) {
 
   // request.url no refleja el Host real detras de un reverse proxy: "next start"
   // construye la URL con el hostname/puerto del bind (localhost:3000), no con el
-  // header Host de la request entrante. Reconstruimos el origin publico desde
-  // los headers forwarded (Cloudflare/Caddy los setean).
+  // header Host de la request entrante. NEXT_PUBLIC_APP_URL (mismo patron que
+  // sendMagicLink) es la fuente de verdad en produccion: con Cloudflare en modo
+  // Flexible, x-forwarded-proto no siempre llega en "https", y si cae a "http"
+  // las cookies Secure de Supabase no se guardarian en ese salto.
   const host =
     request.headers.get("x-forwarded-host") ??
     request.headers.get("host") ??
     url.host;
   const proto =
     request.headers.get("x-forwarded-proto") ?? url.protocol.replace(":", "");
-  const origin = `${proto}://${host}`;
+  const origin = process.env.NEXT_PUBLIC_APP_URL ?? `${proto}://${host}`;
 
   if (code) {
     const supabase = await createClient();
