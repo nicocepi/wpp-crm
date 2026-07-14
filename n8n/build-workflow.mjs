@@ -901,12 +901,33 @@ const postAlert = push(
       },
       jsonBody:
         "={{ JSON.stringify({ contact_id: $('prep alerta').item.json.contact_id, requested_at: $('prep alerta').item.json.requested_at }) }}",
-      extra: { onError: "continueRegularOutput" },
+      // Antes "continueRegularOutput": una falla (red, 401, SMTP) quedaba
+      // invisible (ejecucion "exitosa" sin mail enviado). Ahora cae a la
+      // salida de error -> "Log failed (alerta)" para que quede registrada.
+      extra: { onError: "continueErrorOutput" },
     },
     yAlert,
   ),
 );
 postAlert.position = [6300, yAlert];
+
+// Si el POST de alerta falla (red, 401, SMTP caido), queda registrado en
+// event_logs como error -> visible en /logs del CRM (filtro por level).
+const logFailedAlert = push(
+  http(
+    "Log failed (alerta)",
+    "POST",
+    `=${SUPA}/event_logs`,
+    {
+      headers: supaHeaders([{ name: "Prefer", value: "return=minimal" }]),
+      jsonBody:
+        "={{ JSON.stringify({ tenant_id: $('contact_id').item.json.tenant_id, contact_id: $('prep alerta').item.json.contact_id, phone: $('contact_id').item.json.from, source: 'n8n', level: 'error', event: 'handoff_alert_failed', message: 'Fallo el aviso de handoff sin atender: ' + (($json.error) || 'error desconocido'), data: { contact_id: $('prep alerta').item.json.contact_id, requested_at: $('prep alerta').item.json.requested_at } }) }}",
+      extra: { onError: "continueRegularOutput" },
+    },
+    yAlert + 160,
+  ),
+);
+logFailedAlert.position = [6580, yAlert + 160];
 
 // Si Claude marcó la consulta como urgente -> flag en flow_state + label "Urgente".
 const urgentIf = push(
@@ -1081,6 +1102,7 @@ connect("Handoff?", "Alerta configurada?", 0);
 connect("Alerta configurada?", "prep alerta", 0); // true -> hay casilla
 connect("prep alerta", "Wait alerta");
 connect("Wait alerta", "POST alerta");
+connect("POST alerta", "Log failed (alerta)", 1); // error -> event_logs
 connect("Get attention label", "attn label id");
 connect("attn label id", "Link attention label");
 // Urgencia: si Claude la marcó urgente, flag + label "Urgente"
