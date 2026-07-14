@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { shortTime } from "@/lib/format";
+import { shortTimeAR } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -126,7 +126,7 @@ export default async function LogsPage({
             {(logs ?? []).map((l) => (
               <tr key={l.id} className="border-t align-top">
                 <td className="whitespace-nowrap px-3 py-2 text-xs text-muted-foreground">
-                  {shortTime(l.created_at)}
+                  {shortTimeAR(l.created_at)}
                 </td>
                 <td className="px-3 py-2 text-xs">
                   {l.tenant_id ? tenantName.get(l.tenant_id) ?? "—" : "—"}

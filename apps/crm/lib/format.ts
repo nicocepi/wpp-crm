@@ -21,11 +21,31 @@ export function relativeTime(iso: string | null): string {
   }
 }
 
-/** Hora corta para burbujas de chat (ej: "14:32"). */
+/** Hora corta para burbujas de chat (ej: "14:32"). Usa la TZ del navegador. */
 export function shortTime(iso: string | null): string {
   if (!iso) return "";
   try {
     return format(new Date(iso), "dd/MM HH:mm", { locale: es });
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Hora corta en horario de Argentina (ej: "14:32"), fija sin importar la TZ
+ * del proceso. Para tablas renderizadas en el servidor (el VPS corre en
+ * UTC) donde no hay navegador que aplique la TZ local, como /logs.
+ */
+export function shortTimeAR(iso: string | null): string {
+  if (!iso) return "";
+  try {
+    return new Intl.DateTimeFormat("es-AR", {
+      timeZone: "America/Argentina/Buenos_Aires",
+      day: "2-digit",
+      month: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(new Date(iso));
   } catch {
     return "";
   }
