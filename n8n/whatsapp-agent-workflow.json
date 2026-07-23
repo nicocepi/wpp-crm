@@ -8,7 +8,7 @@
         "responseMode": "onReceived",
         "options": {}
       },
-      "id": "8e02b9aa-71df-472a-804d-8500a6887898",
+      "id": "cb22925d-fd6a-45f7-b94d-3335cb1f0c4c",
       "name": "Webhook WhatsApp",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
@@ -16,7 +16,7 @@
         280,
         300
       ],
-      "webhookId": "233cc24a-c9ca-465d-abd9-ba0ac3f10c17"
+      "webhookId": "de940370-2d8a-49e0-8a7f-a47d9f5198cd"
     },
     {
       "parameters": {
@@ -29,7 +29,7 @@
           "combinator": "and",
           "conditions": [
             {
-              "id": "66213ce5-2314-428c-80c4-c825efc24e05",
+              "id": "e431810d-ba5b-4b15-8d3d-3414b04f1a60",
               "leftValue": "={{ $json.headers['x-n8n-secret'] }}",
               "rightValue": "={{ $env.N8N_WEBHOOK_SECRET }}",
               "operator": {
@@ -40,7 +40,7 @@
           ]
         }
       },
-      "id": "3b60b5bc-e422-491a-8c5b-ac0b1fdd6d83",
+      "id": "4ea6f794-3b1a-4833-ab81-c43408f3243c",
       "name": "Secret valido?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
@@ -54,7 +54,7 @@
         "mode": "runOnceForAllItems",
         "jsCode": "const body = $input.first().json.body || {};\nreturn [{ json: {\n  phone_number_id: body.phone_number_id,\n  from: body.from,\n  contact_name: body.contact_name || null,\n  message_id: body.message_id,\n  type: body.type || 'text',\n  text: body.text || '',\n  media_id: body.media_id || null,\n  media_mime: body.media_mime || null,\n  media_filename: body.media_filename || null,\n  is_media: ['image','document','audio'].includes(body.type) && !!body.media_id,\n  timestamp: body.timestamp || new Date().toISOString(),\n} }];"
       },
-      "id": "a03b77b8-01f5-444d-a1d1-886625c571de",
+      "id": "52a1a4af-9595-45eb-be7c-cec61d0a2e65",
       "name": "ctx",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -86,7 +86,7 @@
           ]
         }
       },
-      "id": "06426a4d-c0c8-4558-9c41-a90501faed82",
+      "id": "0f2e1ff0-d2b9-42a5-b1e6-d5e2b81d332e",
       "name": "Resolve tenant",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -100,7 +100,7 @@
         "mode": "runOnceForAllItems",
         "jsCode": "const items = $input.all().map(i => i.json);\nlet tenant = null;\nif (items.length === 1 && Array.isArray(items[0])) tenant = items[0][0] || null;\nelse if (items.length >= 1 && items[0] && items[0].id) tenant = items[0];\nelse if (items.length === 1 && items[0] && Array.isArray(items[0].body)) tenant = items[0].body[0] || null;\nconst ctx = $('ctx').first().json;\nreturn [{ json: { ...ctx, tenant_id: tenant ? tenant.id : null, has_tenant: !!tenant } }];"
       },
-      "id": "f4573c94-4e41-4f93-a8e9-a13683db49aa",
+      "id": "6b1d2429-95fc-4d49-92f7-2992255c37ad",
       "name": "prep",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -120,7 +120,7 @@
           "combinator": "and",
           "conditions": [
             {
-              "id": "4a5c4c6e-35cf-42ac-9b60-bef25672ca82",
+              "id": "fb77f358-0689-4482-976d-cfb8f26c6bee",
               "leftValue": "={{ $json.has_tenant }}",
               "rightValue": "",
               "operator": {
@@ -132,7 +132,7 @@
           ]
         }
       },
-      "id": "74ff3c4c-dd75-4957-99b6-6b1c89489ce7",
+      "id": "ed00c5f9-1f6f-426f-865f-254af32691c8",
       "name": "Tenant existe?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
@@ -171,7 +171,7 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ tenant_id: $('prep').item.json.tenant_id, phone: $('prep').item.json.from, name: $('prep').item.json.contact_name, last_message_at: $('prep').item.json.timestamp, last_message_preview: $('prep').item.json.text }) }}"
       },
-      "id": "e000a0b2-7709-4704-906d-191589a52cf3",
+      "id": "b97e3a27-6a05-480c-a77e-6c4aaccd2867",
       "name": "Upsert contact",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -185,7 +185,7 @@
         "mode": "runOnceForAllItems",
         "jsCode": "const items = $input.all().map(i => i.json);\nlet row = null;\nif (items.length === 1 && Array.isArray(items[0])) row = items[0][0] || null;\nelse if (items[0] && items[0].id) row = items[0];\nelse if (items[0] && Array.isArray(items[0].body)) row = items[0].body[0] || null;\nconst p = $('prep').first().json;\n// Ruta destino en Storage para la media entrante (bucket chat-attachments).\nconst EXT = { 'image/jpeg':'jpg','image/png':'png','image/webp':'webp','application/pdf':'pdf','audio/ogg':'ogg','audio/mpeg':'mp3','audio/mp4':'m4a','audio/amr':'amr' };\nconst baseMime = (p.media_mime || '').split(';')[0].trim();\nconst ext = EXT[baseMime] || 'bin';\nconst rid = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);\nconst media_path = (p.is_media && row) ? (p.tenant_id + '/' + rid + '.' + ext) : null;\nreturn [{ json: { ...p, contact_id: row ? row.id : null, flow_state: row ? row.flow_state : {}, handoff: row ? (row.handoff === true) : false, media_path } }];"
       },
-      "id": "2724f848-52d5-446f-ac09-d9e6bae42f05",
+      "id": "8d0c5a43-2123-4a7a-bfcd-a72455f23dd6",
       "name": "contact_id",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -224,7 +224,7 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ tenant_id: $('contact_id').item.json.tenant_id, contact_id: $('contact_id').item.json.contact_id, whatsapp_message_id: $('contact_id').item.json.message_id, direction: 'inbound', content: $('contact_id').item.json.text, message_type: $('contact_id').item.json.type, sent_at: $('contact_id').item.json.timestamp }) }}"
       },
-      "id": "7f85788d-4195-44f8-8c34-9a09cee8ad71",
+      "id": "c17f568c-207f-4468-ab9c-47992a478e52",
       "name": "Insert inbound",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -244,7 +244,7 @@
           "combinator": "and",
           "conditions": [
             {
-              "id": "dc25a38a-864d-461c-976a-1bb31dd1e776",
+              "id": "330ca78a-5916-48f0-8627-8f5197447160",
               "leftValue": "={{ $('contact_id').item.json.is_media }}",
               "rightValue": "",
               "operator": {
@@ -256,7 +256,7 @@
           ]
         }
       },
-      "id": "59d4282b-68ff-445c-bc31-61623678af09",
+      "id": "7f5e4abb-b484-48b4-8b00-560612e49281",
       "name": "Es media?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
@@ -284,7 +284,7 @@
           ]
         }
       },
-      "id": "8d2ad365-c987-4222-8fcd-7a8689440d9e",
+      "id": "c111b7bd-5082-4d7a-899e-6ff4eb9f6903",
       "name": "Get media url",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -320,7 +320,7 @@
           ]
         }
       },
-      "id": "1658784d-f380-4bd8-a85b-ab30768741c1",
+      "id": "082cdc2a-4794-4ab4-bf39-9213cd084dff",
       "name": "Download media",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -356,7 +356,7 @@
         "contentType": "binaryData",
         "inputDataFieldName": "data"
       },
-      "id": "1c947fc6-b91d-4797-b12e-ba50dc7b42af",
+      "id": "a5f17244-c320-4fa9-b8da-1d5444a8fc62",
       "name": "Upload media",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -396,7 +396,7 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ tenant_id: $('contact_id').item.json.tenant_id, contact_id: $('contact_id').item.json.contact_id, whatsapp_message_id: $('contact_id').item.json.message_id, direction: 'inbound', content: $('contact_id').item.json.text, message_type: $('contact_id').item.json.type, media_url: $('contact_id').item.json.media_path, media_mime: $('contact_id').item.json.media_mime, media_filename: $('contact_id').item.json.media_filename, sent_at: $('contact_id').item.json.timestamp }) }}"
       },
-      "id": "e398181f-0135-4c91-9986-dcbca4a19228",
+      "id": "211d8b0a-eb89-404b-b0c6-c4b1c4c4e85d",
       "name": "Insert inbound (media)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -428,7 +428,7 @@
           ]
         }
       },
-      "id": "2b21f56c-101b-41f0-8897-ceca603edd59",
+      "id": "f8e9b004-0221-472d-8977-24e58bd27648",
       "name": "Get bot_config",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -460,7 +460,7 @@
           ]
         }
       },
-      "id": "f7dec3d9-681a-403d-b45e-e21dd11250c0",
+      "id": "fe2de1ae-84af-41db-9e9b-69aa335adb92",
       "name": "Get history",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -474,7 +474,7 @@
         "mode": "runOnceForAllItems",
         "jsCode": "function unwrap(json){ if(Array.isArray(json)) return json; if(json && Array.isArray(json.body)) return json.body; if(json && json.id!==undefined) return [json]; return []; }\nconst cfgArr = unwrap($('Get bot_config').first().json);\nconst cfg = cfgArr[0] || { enabled: true, system_prompt: '', reply_delay_seconds: 2 };\nconst hist = unwrap($('Get history').first().json).slice().reverse();\nconst c = $('contact_id').first().json;\n\n// Ventana de 24h: solo respuesta libre si el mensaje entrante es < 24h.\nconst ageMs = Date.now() - new Date(c.timestamp).getTime();\nconst within24h = ageMs < 24*60*60*1000;\nconst can_reply = !!cfg.enabled && within24h;\n\n// Construye el array de messages para Claude (alterna user/assistant).\nconst messages = [];\nfor (const m of hist) {\n  const role = m.direction === 'outbound' ? 'assistant' : 'user';\n  if (m.content) messages.push({ role, content: m.content });\n}\n// Asegura que el ultimo turno sea del user (mensaje actual).\nif (messages.length === 0 || messages[messages.length-1].role !== 'user') {\n  messages.push({ role: 'user', content: c.text });\n}\n\nreturn [{ json: {\n  ...c,\n  enabled: !!cfg.enabled,\n  system_prompt: cfg.system_prompt || 'Sos un asistente de atencion al cliente. Responde breve y amable en espanol.',\n  reply_delay_seconds: cfg.reply_delay_seconds ?? 2,\n  within24h, can_reply, messages,\n} }];"
       },
-      "id": "0141ddbf-7a86-4bf6-a2c2-f6c5e53c88b2",
+      "id": "107844f6-5929-4b63-aed4-a93ca1857d2e",
       "name": "prep AI",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -509,7 +509,7 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 80, system: [{ type: 'text', text: 'Extrae en UNA frase corta (max 12 palabras) que necesita o pide el contacto. Responde solo la frase, sin comillas.', cache_control: { type: 'ephemeral' } }], messages: [{ role: 'user', content: $('prep AI').item.json.text }] }) }}"
       },
-      "id": "1ae29293-4bc6-4bbb-9258-a04da5df3beb",
+      "id": "16dbc862-bab9-47c0-a8b2-425f129ba9d1",
       "name": "Claude extract needs",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -549,7 +549,7 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ needs: (($json.content && $json.content[0] && $json.content[0].text) || '').trim(), status: 'active' }) }}"
       },
-      "id": "4348aeb2-c846-4963-b526-8083ab70e949",
+      "id": "ee0b9d88-7a48-4178-a7f1-16e79e8d0642",
       "name": "Update needs",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -569,7 +569,7 @@
           "combinator": "and",
           "conditions": [
             {
-              "id": "70b2d697-29d1-4bf2-8220-f94ef681698c",
+              "id": "aa5a7360-cca6-4392-9ea9-afc0af8436b7",
               "leftValue": "={{ $('prep AI').item.json.can_reply }}",
               "rightValue": "",
               "operator": {
@@ -581,7 +581,7 @@
           ]
         }
       },
-      "id": "f4a11c34-3e0f-4a18-b7ea-150de920760b",
+      "id": "7847f098-7931-4066-b98d-184e478e775a",
       "name": "Responder?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
@@ -595,7 +595,7 @@
         "amount": "={{ $('prep AI').item.json.reply_delay_seconds }}",
         "unit": "seconds"
       },
-      "id": "bcfcb656-2a77-4610-b9f0-f0bc5ae6c3d0",
+      "id": "19ee9ad1-f8e5-47ba-a075-df230e7f36d5",
       "name": "Wait delay",
       "type": "n8n-nodes-base.wait",
       "typeVersion": 1.1,
@@ -603,7 +603,7 @@
         5320,
         460
       ],
-      "webhookId": "dd330fc7-7dba-4e24-87ca-4353a6bca114"
+      "webhookId": "a65e069f-561e-49d6-a31d-4580b6094517"
     },
     {
       "parameters": {
@@ -631,7 +631,7 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 500, system: [{ type: 'text', text: $('prep AI').item.json.system_prompt, cache_control: { type: 'ephemeral' } }], messages: $('prep AI').item.json.messages }) }}"
       },
-      "id": "27253028-dfb3-4f19-a2c4-c9206175a54c",
+      "id": "46c994e2-2f00-43ac-a03d-543cb1bfe1b6",
       "name": "Claude reply",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -669,7 +669,7 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ messaging_product: 'whatsapp', to: $('prep AI').item.json.from, type: 'text', text: { body: (($json.content && $json.content[0] && $json.content[0].text) || '').trim() } }) }}"
       },
-      "id": "d8abaa2c-26b8-4a94-a927-c4178f93a4de",
+      "id": "4a5a894d-7326-4a8c-814d-e6b092244395",
       "name": "Send WhatsApp",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -709,7 +709,7 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ tenant_id: $('prep AI').item.json.tenant_id, contact_id: $('prep AI').item.json.contact_id, whatsapp_message_id: (($json.messages && $json.messages[0] && $json.messages[0].id) || null), direction: 'outbound', content: (($('Claude reply').item.json.content && $('Claude reply').item.json.content[0] && $('Claude reply').item.json.content[0].text) || '').trim(), message_type: 'text', sent_at: new Date().toISOString() }) }}"
       },
-      "id": "8a55ccc8-c4e5-4d3a-b708-bef06fb00991",
+      "id": "af195bb7-61f1-4f15-bddf-4caa0ab208af",
       "name": "Insert outbound",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -748,7 +748,7 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ tenant_id: $('prep AI').item.json.tenant_id, contact_phone: $('prep AI').item.json.from, content: $('prep AI').item.json.text, error: $('prep AI').item.json.enabled ? 'fuera de ventana 24h' : 'bot deshabilitado' }) }}"
       },
-      "id": "a886e540-e2b5-466f-b4ad-4d5492dbd2bc",
+      "id": "fcf3adeb-5d69-4a10-818e-03ddf0090667",
       "name": "Log failed (ventana)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -787,7 +787,7 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ tenant_id: $('prep AI').item.json.tenant_id, contact_phone: $('prep AI').item.json.from, content: 'respuesta IA', error: 'fallo el envio a Meta' }) }}"
       },
-      "id": "efc6cf17-bd06-40bf-b82b-b67c14acd226",
+      "id": "7ba3c39d-8b0a-4ee2-bb0f-8185793fc6f3",
       "name": "Log failed (send)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -801,7 +801,7 @@
         "mode": "runOnceForAllItems",
         "jsCode": "function unwrap(json){ if(Array.isArray(json)) return json; if(json && Array.isArray(json.body)) return json.body; if(json && typeof json === 'object') return [json]; return []; }\nconst cfgArr = unwrap($('Get bot_config').first().json);\nconst cfg = cfgArr[0] || {};\nconst c = $('contact_id').first().json;\nreturn [{ json: { ...c,\n  flow_type: cfg.flow_type || 'ai',\n  flow_definition: cfg.flow_definition || null,\n  enabled: cfg.enabled !== false,\n  system_prompt: cfg.system_prompt || '',\n  reply_delay_seconds: cfg.reply_delay_seconds ?? 2,\n  alert_email: cfg.alert_email || '',\n  alert_delay_minutes: cfg.alert_delay_minutes ?? 5,\n} }];"
       },
-      "id": "5053d989-4837-4ec6-a58a-5f14e1d3d6cc",
+      "id": "b2dc70a3-25b9-454e-ad07-3b1a18affcf1",
       "name": "bot cfg",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -821,7 +821,7 @@
           "combinator": "and",
           "conditions": [
             {
-              "id": "55ca388b-b7d6-4890-ba18-6110efae3f39",
+              "id": "f6661191-adc9-41f6-951f-21cd4ac40dcb",
               "leftValue": "={{ $json.flow_type }}",
               "rightValue": "menu",
               "operator": {
@@ -832,7 +832,7 @@
           ]
         }
       },
-      "id": "8d69233a-8390-43c2-9aad-050e0c0b3c9b",
+      "id": "2cc6e7ee-811d-4931-b365-a069cbfc92f4",
       "name": "Modo menu?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
@@ -846,7 +846,7 @@
         "mode": "runOnceForAllItems",
         "jsCode": "const j = $('bot cfg').first().json;\nconst flow = j.flow_definition || { start: 'root', nodes: {}, invalid_message: 'Opción no válida.' };\nconst state = (j.flow_state && typeof j.flow_state === 'object') ? j.flow_state : {};\nconst text = (j.text || '').toString();\nconst reply_delay_seconds = j.reply_delay_seconds ?? 1;\n\n// Fecha local AR para el mute \"resto del día\" (auto-resetea al día siguiente).\nconst todayAR = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date());\n\n// Handoff es COLUMNA dedicada (j.handoff), no flow_state -> n8n nunca la pisa en false.\n// Si un humano tomó el chat, el bot queda en silencio hasta que se libere desde el CRM.\nif (j.handoff === true) {\n  return [{ json: { should_send: false, reply: '', reply_delay_seconds, handoff_triggered: false, summary_triggered: false, new_flow_state: state, patch_body: { flow_state: state } } }];\n}\n\n// Muteado hoy -> silencio total, sin tocar el estado.\nif (state.muted_date && state.muted_date === todayAR) {\n  return [{ json: { should_send: false, reply: '', reply_delay_seconds, handoff_triggered: false, summary_triggered: false, new_flow_state: state, patch_body: { flow_state: state } } }];\n}\n\n// Esperando la consulta libre (tras elegir \"hablar con un representante\"):\n// el mensaje actual ES la consulta -> deriva a humano y dispara el resumen.\nif (state.awaiting_query === true) {\n  const reply = '¡Gracias! Registramos tu consulta. En breve te atenderá un representante.';\n  const new_flow_state = { ...state, awaiting_query: false, current_menu: null, consulta: text };\n  return [{ json: { should_send: true, reply, reply_delay_seconds, handoff_triggered: true, summary_triggered: true, path: state.path || [], consulta: text, new_flow_state, patch_body: { flow_state: new_flow_state, handoff: true } } }];\n}\n\nconst nodes = flow.nodes || {};\nconst m = text.match(/\\d+/);\nconst num = m ? m[0] : null;\nlet current = state.current_menu || null;\nlet reply = '';\nlet next_menu = current;\nlet muted_date = null;\nlet handoff_triggered = false;\nlet summary_triggered = false;\nlet awaiting_query = false;\n// Recorrido del menú en esta sesión (títulos de los nodos visitados).\nlet path = Array.isArray(state.path) ? state.path.slice() : [];\n\nif (!current) {\n  // Inicio de sesión: bienvenida (ignora lo tipeado). Reinicia el recorrido.\n  const startNode = nodes[flow.start] || { message: '' };\n  reply = startNode.message || '';\n  next_menu = flow.start;\n  path = [];\n} else {\n  const curNode = nodes[current] || { options: {} };\n  const opts = curNode.options || {};\n  const target = (num !== null && Object.prototype.hasOwnProperty.call(opts, num)) ? opts[num] : null;\n  if (!target) {\n    // Opción inválida: queda en el mismo menú.\n    reply = flow.invalid_message || 'Opción no válida.';\n    next_menu = current;\n  } else if (target === flow.start) {\n    // \"Volver a empezar\": reinicia el recorrido.\n    reply = (nodes[target] && nodes[target].message) || '';\n    next_menu = flow.start;\n    path = [];\n  } else {\n    const tNode = nodes[target] || { message: '' };\n    reply = tNode.message || '';\n    path.push(tNode.title || target);   // registra el paso elegido\n    if (tNode.await_query) { awaiting_query = true; next_menu = null; }                  // pide la consulta libre (handoff al próximo mensaje)\n    else if (tNode.handoff) { handoff_triggered = true; summary_triggered = true; next_menu = null; }  // derivar a humano (pausa el bot)\n    else if (tNode.mute) { muted_date = todayAR; next_menu = null; }\n    else if (tNode.options) { next_menu = target; }            // submenú\n    else { next_menu = null; summary_triggered = true; }       // terminal de mensaje predefinido -> resume igual\n  }\n}\n\nconst new_flow_state = { current_menu: next_menu, muted_date, awaiting_query, path };\n// patch_body: escribe flow_state siempre; setea la columna handoff=true SOLO al dispararlo.\nconst patch_body = handoff_triggered ? { flow_state: new_flow_state, handoff: true } : { flow_state: new_flow_state };\nreturn [{ json: { should_send: (reply || '').length > 0, reply, reply_delay_seconds, handoff_triggered, summary_triggered, path, new_flow_state, patch_body } }];"
       },
-      "id": "14bb7960-de61-4624-a81b-666eb444dbab",
+      "id": "9a193772-2aab-4841-b9e4-d6c022677a74",
       "name": "Menu engine",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -885,7 +885,7 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify($('Menu engine').item.json.patch_body) }}"
       },
-      "id": "1da24985-b8f6-4a68-b78d-613c7b3907e3",
+      "id": "8c375ec4-6f8d-4b34-85f8-0dedd8a1bdda",
       "name": "Patch flow_state",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -905,7 +905,7 @@
           "combinator": "and",
           "conditions": [
             {
-              "id": "ac9b13a9-673c-4c43-be8b-dbe6b640eaee",
+              "id": "f206f25d-b61c-4160-8c45-71ec1ed73067",
               "leftValue": "={{ $('Menu engine').item.json.should_send }}",
               "rightValue": "",
               "operator": {
@@ -917,7 +917,7 @@
           ]
         }
       },
-      "id": "8d070fb3-9316-401b-80e0-1f16b24ff715",
+      "id": "92e8342d-83cd-42c4-be83-e12af4618398",
       "name": "Enviar? (menu)",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
@@ -931,7 +931,7 @@
         "amount": "={{ $('Menu engine').item.json.reply_delay_seconds }}",
         "unit": "seconds"
       },
-      "id": "83fcb1bd-1e1f-416c-8eaf-7b79a746d187",
+      "id": "12e102b7-ed71-4f31-a42d-8c4618e6213c",
       "name": "Wait delay (menu)",
       "type": "n8n-nodes-base.wait",
       "typeVersion": 1.1,
@@ -939,7 +939,7 @@
         4340,
         760
       ],
-      "webhookId": "9cf6ca04-9a68-44b5-9bad-5dde5354a8b6"
+      "webhookId": "a058dc8c-758f-42a3-a56c-2c2815339051"
     },
     {
       "parameters": {
@@ -970,7 +970,7 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ messaging_product: 'whatsapp', to: $('contact_id').item.json.from, type: 'text', text: { body: $('Menu engine').item.json.reply } }) }}"
       },
-      "id": "108e1f1f-7d73-4836-bc18-519373687148",
+      "id": "c2d8cc7c-da88-4c52-801d-a38b4940f493",
       "name": "Send WhatsApp (menu)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1010,7 +1010,7 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ tenant_id: $('contact_id').item.json.tenant_id, contact_id: $('contact_id').item.json.contact_id, whatsapp_message_id: (($json.messages && $json.messages[0] && $json.messages[0].id) || null), direction: 'outbound', content: $('Menu engine').item.json.reply, message_type: 'text', sent_at: new Date().toISOString() }) }}"
       },
-      "id": "fb693f3e-1016-4e2d-93b6-3c501b5a7636",
+      "id": "6e7db0de-4725-48f3-955d-7ae430e2d652",
       "name": "Insert outbound (menu)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1049,7 +1049,7 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ tenant_id: $('contact_id').item.json.tenant_id, contact_phone: $('contact_id').item.json.from, content: $('Menu engine').item.json.reply, error: 'fallo el envio a Meta (menu)' }) }}"
       },
-      "id": "664a7ef1-06df-41eb-b993-d469f567db46",
+      "id": "f4ac6666-a133-4048-9d0c-d5170732c8c6",
       "name": "Log failed (send menu)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1069,7 +1069,7 @@
           "combinator": "and",
           "conditions": [
             {
-              "id": "768f8ea7-dec9-4354-9cd9-ed715bdc3bf4",
+              "id": "87189619-4845-482e-b067-94f70aecfc4b",
               "leftValue": "={{ $('Menu engine').item.json.summary_triggered }}",
               "rightValue": "",
               "operator": {
@@ -1081,7 +1081,7 @@
           ]
         }
       },
-      "id": "5a3d2d3e-c89b-41a7-96d3-3a2854dfce39",
+      "id": "68ed5ee3-5c12-4319-b2ab-864b7a58070c",
       "name": "Resumir?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
@@ -1113,7 +1113,7 @@
           ]
         }
       },
-      "id": "93762224-18f8-434a-942a-cd92b5026df8",
+      "id": "20c91785-bac6-45c6-a7b9-a37d1e997147",
       "name": "Get history (menu)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1127,7 +1127,7 @@
         "mode": "runOnceForAllItems",
         "jsCode": "function unwrap(json){ if(Array.isArray(json)) return json; if(json && Array.isArray(json.body)) return json.body; if(json && typeof json === 'object') return [json]; return []; }\nconst me = $('Menu engine').first().json;\nconst path = Array.isArray(me.path) ? me.path : [];\nconst pathStr = path.join(' → ');\nconst consulta = (me.consulta || '').toString().trim();\n// Comentarios en texto libre del contacto (no simples números de opción).\nconst hist = unwrap($('Get history (menu)').first().json).slice().reverse();\nconst comments = hist.filter(m => m.direction === 'inbound' && m.content && !/^\\s*\\d+\\s*$/.test(m.content)).map(m => m.content);\nconst extra = comments.length ? ('\\nMensajes en texto del contacto: ' + comments.join(' | ')) : '';\nlet convo = 'Pasos del menú que recorrió: ' + (pathStr || '(ninguno)');\nif (consulta) convo += '\\nConsulta que escribió: ' + consulta;\nconvo += extra;\nreturn [{ json: { convo, pathStr, consulta } }];"
       },
-      "id": "1ffc4cb1-8bc0-49a2-a0ef-046c550ea9e5",
+      "id": "f6365b92-30d6-4bd5-ae1d-77112121cb05",
       "name": "prep summary",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1162,7 +1162,7 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 150, system: [{ type: 'text', text: 'Sos asistente de una administración de consorcios. El contacto usó un menú de WhatsApp. A partir de los pasos del menú y, si la hay, la consulta que escribió, devolvé SOLO un JSON válido (sin texto extra ni markdown) con la forma {\\\"urgente\\\": true|false, \\\"resumen\\\": \\\"...\\\"}. El campo resumen: 1 o 2 frases en español de qué consultó o necesita, para que un agente lo retome; priorizá la consulta escrita y mencioná los pasos; sé específico; NO escribas solo que espera ser atendido. El campo urgente: true SOLO si refleja una urgencia real (fuga de gas, inundación, incendio, ascensor con personas atrapadas, falta de un servicio esencial, riesgo a personas o bienes); si no, false.', cache_control: { type: 'ephemeral' } }], messages: [{ role: 'user', content: $('prep summary').item.json.convo }] }) }}"
       },
-      "id": "057e92cb-5a94-4485-a9e0-69b5032e1b66",
+      "id": "ff34be62-79a5-421d-b6d8-809a2be7fa4a",
       "name": "Claude summary",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1177,7 +1177,7 @@
         "mode": "runOnceForAllItems",
         "jsCode": "const c = $('Claude summary').first().json;\nconst raw = ((c.content && c.content[0] && c.content[0].text) || '').trim();\nlet urgente = false;\nlet resumen = '';\ntry {\n  const m = raw.match(/\\{[\\s\\S]*\\}/);\n  const obj = JSON.parse(m ? m[0] : raw);\n  if (typeof obj.urgente === 'boolean') urgente = obj.urgente;\n  if (obj.resumen) resumen = String(obj.resumen).trim();\n} catch (e) {\n  resumen = raw; // si no vino JSON, usar el texto crudo\n}\nif (!resumen) {\n  const ps = $('prep summary').first().json;\n  resumen = (ps.consulta ? ('Consulta: ' + ps.consulta + '. ') : '') + 'Pasos: ' + (ps.pathStr || 'sin registrar');\n}\nreturn [{ json: { resumen, urgente } }];"
       },
-      "id": "798a5397-b2a8-43e9-8f1a-5752a669c2bb",
+      "id": "2914eeb2-67d8-42d8-9a00-e0f5261f2710",
       "name": "parse result",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1216,7 +1216,7 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ needs: $('parse result').item.json.resumen, status: 'active' }) }}"
       },
-      "id": "17627d8f-83d2-48ef-adad-ea2632bcdaac",
+      "id": "a816e738-66e9-4d46-abce-bd82cace19c0",
       "name": "Update needs (menu)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1236,7 +1236,7 @@
           "combinator": "and",
           "conditions": [
             {
-              "id": "e5235ffb-49bb-4704-abb0-22afa85cbb09",
+              "id": "1b1f8bd2-5265-473b-b8ed-5cb65842df1b",
               "leftValue": "={{ $('Menu engine').item.json.handoff_triggered }}",
               "rightValue": "",
               "operator": {
@@ -1248,7 +1248,7 @@
           ]
         }
       },
-      "id": "a673b5b8-0975-4a16-b3bc-ffaf746167aa",
+      "id": "83d83e9e-13d4-400f-8c95-48e7733dd24b",
       "name": "Handoff?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
@@ -1280,7 +1280,7 @@
           ]
         }
       },
-      "id": "0ad228e9-6385-4ef0-bc64-22532daeaafa",
+      "id": "f454bad2-5648-48f4-b333-08406dee28be",
       "name": "Get attention label",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1294,7 +1294,7 @@
         "mode": "runOnceForAllItems",
         "jsCode": "function unwrap(json){ if(Array.isArray(json)) return json; if(json && Array.isArray(json.body)) return json.body; if(json && typeof json === 'object') return [json]; return []; }\nconst rows = unwrap($('Get attention label').first().json);\nconst label_id = rows[0] && rows[0].id ? rows[0].id : null;\nreturn [{ json: { label_id, contact_id: $('contact_id').first().json.contact_id } }];"
       },
-      "id": "021acb67-4ac9-4e2a-b365-ac8dec49c53f",
+      "id": "c9ab85f0-2e4e-4376-bf97-fdfe7bcdfa3f",
       "name": "attn label id",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1333,7 +1333,7 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ contact_id: $('attn label id').item.json.contact_id, label_id: $('attn label id').item.json.label_id }) }}"
       },
-      "id": "85cac7f3-36a4-4aea-bc38-82bbac564227",
+      "id": "0539e8a4-8b59-450b-a42f-9ec2c4301bcb",
       "name": "Link attention label",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1354,7 +1354,7 @@
           "combinator": "and",
           "conditions": [
             {
-              "id": "2cf096bb-507f-4aea-9753-adcc58396ec4",
+              "id": "6e986c51-4d9c-4bf0-b08c-48d6695bf5e8",
               "leftValue": "={{ (($('bot cfg').first().json.alert_email) || '').length > 0 }}",
               "rightValue": "",
               "operator": {
@@ -1366,7 +1366,7 @@
           ]
         }
       },
-      "id": "d8f5cc69-7943-448c-af11-d73556c63074",
+      "id": "516cfe18-3914-4e2d-bf84-29697497d9f0",
       "name": "Alerta configurada?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
@@ -1380,7 +1380,7 @@
         "mode": "runOnceForAllItems",
         "jsCode": "const cfg = $('bot cfg').first().json;\nconst c = $('contact_id').first().json;\nreturn [{ json: {\n  contact_id: c.contact_id,\n  requested_at: c.timestamp || new Date().toISOString(),\n  delay: cfg.alert_delay_minutes || 5,\n} }];"
       },
-      "id": "2306235e-ea0c-4551-9f1e-f9e8a159138f",
+      "id": "c4299f7c-d681-49ac-8794-424eff5a6e90",
       "name": "prep alerta",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1394,7 +1394,7 @@
         "amount": "={{ $('prep alerta').item.json.delay }}",
         "unit": "minutes"
       },
-      "id": "36d6246e-7de2-48b1-bba6-2195e7255784",
+      "id": "3f2ec833-a3a2-4294-bf7a-a1f7d9d038e9",
       "name": "Wait alerta",
       "type": "n8n-nodes-base.wait",
       "typeVersion": 1.1,
@@ -1402,7 +1402,7 @@
         6020,
         1220
       ],
-      "webhookId": "728865cf-6862-40a2-aa32-1157bc08cdf5"
+      "webhookId": "eb658d7a-1160-4d1e-a7b6-24bee4dfa268"
     },
     {
       "parameters": {
@@ -1426,7 +1426,7 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ contact_id: $('prep alerta').item.json.contact_id, requested_at: $('prep alerta').item.json.requested_at }) }}"
       },
-      "id": "77fb1222-74f0-462c-af83-fed086a6f3e4",
+      "id": "2333ea5d-896c-4d04-82b6-7e72f9b4ebe0",
       "name": "POST alerta",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1466,7 +1466,7 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ tenant_id: $('contact_id').item.json.tenant_id, contact_id: $('prep alerta').item.json.contact_id, phone: $('contact_id').item.json.from, source: 'n8n', level: 'error', event: 'handoff_alert_failed', message: 'Fallo el aviso de handoff sin atender: ' + (($json.error) || 'error desconocido'), data: { contact_id: $('prep alerta').item.json.contact_id, requested_at: $('prep alerta').item.json.requested_at } }) }}"
       },
-      "id": "f2af3019-cb2e-4705-a984-cd2c018da648",
+      "id": "125e4aa8-fd96-44af-b76c-9d8f9cdff409",
       "name": "Log failed (alerta)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1487,7 +1487,7 @@
           "combinator": "and",
           "conditions": [
             {
-              "id": "9ff0980c-63d2-47a6-a5aa-cfe6bcce833a",
+              "id": "80673ec6-cae0-4cf5-b08d-4b90299a53d4",
               "leftValue": "={{ $('parse result').item.json.urgente }}",
               "rightValue": "",
               "operator": {
@@ -1499,7 +1499,7 @@
           ]
         }
       },
-      "id": "df310cb9-a312-4046-83d2-cd571b31de14",
+      "id": "b512bdfa-706c-464c-a686-4f6aaa41099c",
       "name": "Urgente?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
@@ -1538,7 +1538,7 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ flow_state: Object.assign({}, $('Menu engine').item.json.new_flow_state, { urgent: true }) }) }}"
       },
-      "id": "70672147-6723-47d3-8da1-15efd7d612e2",
+      "id": "e12f7571-8d6f-47cf-8d4e-e8df666c3088",
       "name": "Set urgent flag",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1570,7 +1570,7 @@
           ]
         }
       },
-      "id": "6c5a8ab4-9b7d-404d-b020-3dbce6d8c4b4",
+      "id": "2c825eab-caaf-41a9-8d9e-5981ec5b2962",
       "name": "Get urgent label",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1584,7 +1584,7 @@
         "mode": "runOnceForAllItems",
         "jsCode": "function unwrap(json){ if(Array.isArray(json)) return json; if(json && Array.isArray(json.body)) return json.body; if(json && typeof json === 'object') return [json]; return []; }\nconst rows = unwrap($('Get urgent label').first().json);\nconst label_id = rows[0] && rows[0].id ? rows[0].id : null;\nreturn [{ json: { label_id, contact_id: $('contact_id').first().json.contact_id } }];"
       },
-      "id": "4b954f9a-e2e4-4313-a1de-203223b27d45",
+      "id": "b0a1ad42-f953-4220-8990-0b1f01785357",
       "name": "urgent label id",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1623,7 +1623,7 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ contact_id: $('urgent label id').item.json.contact_id, label_id: $('urgent label id').item.json.label_id }) }}"
       },
-      "id": "8b82ba4e-a697-4a7c-8828-a94853496868",
+      "id": "a96df37c-6835-49ed-9532-ea597ede496f",
       "name": "Link urgent label",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1663,7 +1663,7 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ tenant_id: $('contact_id').item.json.tenant_id, contact_id: $('contact_id').item.json.contact_id, phone: $('contact_id').item.json.from, source: 'n8n', level: 'info', event: 'menu_decision', message: ($('Menu engine').item.json.reply || '').slice(0, 300), data: { text: $('contact_id').item.json.text, path: $('Menu engine').item.json.path, next_menu: $('Menu engine').item.json.new_flow_state.current_menu, handoff: $('Menu engine').item.json.new_flow_state.handoff, awaiting_query: $('Menu engine').item.json.new_flow_state.awaiting_query, should_send: $('Menu engine').item.json.should_send, handoff_triggered: $('Menu engine').item.json.handoff_triggered, summary_triggered: $('Menu engine').item.json.summary_triggered } }) }}"
       },
-      "id": "fbf3bfaf-f4cd-45ba-a954-27b317b5affa",
+      "id": "4cce116a-89d9-42ec-b0e2-803dd530794b",
       "name": "Log flow (menu)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1703,7 +1703,7 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ tenant_id: $('prep AI').item.json.tenant_id, contact_id: $('prep AI').item.json.contact_id, phone: $('prep AI').item.json.from, source: 'n8n', level: ($('prep AI').item.json.can_reply ? 'info' : 'warn'), event: 'ai_reply', message: ($('prep AI').item.json.text || '').slice(0, 300), data: { text: $('prep AI').item.json.text, within24h: $('prep AI').item.json.within24h, can_reply: $('prep AI').item.json.can_reply, enabled: $('prep AI').item.json.enabled } }) }}"
       },
-      "id": "966a574a-deeb-4f2d-9f96-535a87f86cba",
+      "id": "c9bccd01-6b14-4459-add1-475dd06a60e8",
       "name": "Log flow (ai)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1715,12 +1715,301 @@
     },
     {
       "parameters": {
-        "content": "## WhatsApp Agent\\n\\nEnv requeridas (Settings -> Variables o env del contenedor):\\n- SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY\\n- ANTHROPIC_API_KEY\\n- WHATSAPP_API_TOKEN\\n- N8N_WEBHOOK_SECRET\\n\\nRequiere N8N_BLOCK_ENV_ACCESS_IN_NODE=false para leer $env.\\n\\nDocs Meta: https://developers.facebook.com/docs/whatsapp/cloud-api/reference/messages",
-        "height": 320,
+        "mode": "runOnceForAllItems",
+        "jsCode": "const base = ($env.CRM_INTERNAL_URL || '').replace(/\\/+$/, '');\nconst secret = $env.APPOINTMENTS_INTERNAL_SECRET || '';\nconst helpers = this.helpers;\nconst c = $('contact_id').first().json;\nconst tenant_id = c.tenant_id;\nconst contact_id = c.contact_id;\nconst phone = c.from;\nconst text = (c.text || '').toString().trim();\nconst low = text.toLowerCase();\nconst st0 = (c.flow_state && typeof c.flow_state === 'object') ? c.flow_state : {};\nconst state = Object.assign({}, st0);\nconst reply_delay_seconds = 1;\n\nfunction out(handled, reply, newState){\n  return [{ json: { handled: !!handled, should_send: !!(handled && reply), reply: reply || '', reply_delay_seconds, patch_body: { flow_state: (newState || state) } } }];\n}\nfunction notHandled(){ return out(false, '', st0); }\nfunction st0Clear(){ const s = Object.assign({}, st0); ['appt_step','appt_treatment_id','appt_professional_id','appt_offered','appt_slot_cursor','appt_hold_id','appt_hold_label','appt_mode','appt_resch_id','appt_options','appt_topts','appt_popts','appt_topts_resch'].forEach(function(k){ delete s[k]; }); s.appt_correlation_id = null; return s; }\n\nif (c.handoff === true) return notHandled();\nif (!base || !secret) return notHandled();\n\nasync function api(path, body){\n  return await helpers.httpRequest({ method: 'POST', url: base + '/api/internal/appointments/' + path, headers: { 'x-appointment-secret': secret, 'Content-Type': 'application/json' }, body: body, json: true });\n}\nfunction todayAR(){ return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date()); }\nfunction addDays(ymd, n){ const a = ymd.split('-').map(Number); const dt = new Date(Date.UTC(a[0], a[1]-1, a[2], 12)); dt.setUTCDate(dt.getUTCDate()+n); return dt.getUTCFullYear()+'-'+String(dt.getUTCMonth()+1).padStart(2,'0')+'-'+String(dt.getUTCDate()).padStart(2,'0'); }\nfunction fmt(iso, tz){ try { return new Intl.DateTimeFormat('es-AR', { timeZone: tz || 'America/Argentina/Buenos_Aires', weekday:'short', day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }).format(new Date(iso)); } catch(e){ return iso; } }\nfunction numIn(t){ const m = t.match(/\\d+/); return m ? parseInt(m[0],10) : null; }\n\nconst CID = state.appt_correlation_id || (Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,10));\nconst step = state.appt_step || null;\nconst wantsBook = /(turno|turnos|agendar|reservar|cita|sacar)/.test(low) && !/cancel|reprogram/.test(low);\nconst wantsCancel = /cancel/.test(low);\nconst wantsResch = /(reprogram|cambiar.*turno|mover.*turno|pasar.*turno)/.test(low);\nconst wantsList = /(mis turnos|cuando tengo|cuándo tengo|que turno|qué turno)/.test(low);\n\nasync function showAvailability(ns, cursor){\n  const from = addDays(todayAR(), 0);\n  const to = addDays(todayAR(), 21);\n  let res;\n  try { res = await api('availability', { tenant_id, treatment_id: ns.appt_treatment_id, professional_id: ns.appt_professional_id || null, from: from, to: to }); }\n  catch(e){ return out(true, 'No pude consultar la disponibilidad ahora. Probá de nuevo en un rato.', ns); }\n  const slots = (res && res.slots) || [];\n  const tz = (res && res.timezone) || 'America/Argentina/Buenos_Aires';\n  const start = cursor || 0;\n  const page = slots.slice(start, start+6);\n  if (page.length === 0){\n    if (start > 0) return out(true, 'No hay más horarios. Respondé con el número de uno anterior o escribí \"cancelar\".', Object.assign({}, ns, { appt_step:'choose_slot' }));\n    return out(true, 'No encontré horarios disponibles en los próximos días. Escribí \"cancelar\" para salir.', st0Clear());\n  }\n  const offered = page.map(function(s){ return { p: s.professionalId, s: s.startAt }; });\n  let msg = 'Estos son los horarios disponibles:\\n';\n  page.forEach(function(s,i){ msg += (i+1) + '. ' + fmt(s.startAt, tz) + '\\n'; });\n  msg += 'Respondé con el número. Escribí MAS para ver más, o \"cancelar\" para salir.';\n  return out(true, msg, Object.assign({}, ns, { appt_step:'choose_slot', appt_offered: offered, appt_slot_cursor: start, appt_correlation_id: CID }));\n}\n\n// ---- Sin sub-flujo activo: detectar intención ----\nif (!step){\n  if (wantsList || wantsCancel || wantsResch){\n    let up;\n    try { up = await api('upcoming', { tenant_id, contact_id }); } catch(e){ return notHandled(); }\n    const appts = (up && up.appointments) || [];\n    if (appts.length === 0) return out(true, 'No tenés turnos futuros agendados.', st0Clear());\n    let msg = 'Tus próximos turnos:\\n';\n    appts.forEach(function(a,i){ msg += (i+1) + '. ' + fmt(a.start_at) + '\\n'; });\n    if (wantsList && !wantsCancel && !wantsResch) return out(true, msg + '¿Necesitás algo más? Podés escribir \"cancelar turno\" o \"reprogramar\".', st0Clear());\n    const ids = appts.map(function(a){ return a.id; });\n    const tids = appts.map(function(a){ return a.treatment_id; });\n    const cancel = wantsCancel && !wantsResch;\n    msg += cancel ? 'Respondé con el número del turno a cancelar.' : 'Respondé con el número del turno a reprogramar.';\n    return out(true, msg, Object.assign({}, st0, { appt_step: cancel ? 'cancel_pick' : 'resch_pick', appt_options: ids, appt_topts_resch: tids, appt_correlation_id: CID }));\n  }\n  if (wantsBook){\n    let cat;\n    try { cat = await api('catalog', { tenant_id, kind: 'treatments' }); } catch(e){ return notHandled(); }\n    const treatments = (cat && cat.treatments) || [];\n    if (treatments.length === 0) return notHandled();\n    let msg = '¡Perfecto! ¿Qué tratamiento necesitás?\\n';\n    treatments.forEach(function(t,i){ msg += (i+1) + '. ' + t.name + ' (' + t.duration_minutes + ' min)\\n'; });\n    msg += 'Respondé con el número.';\n    return out(true, msg, Object.assign({}, st0, { appt_step:'choose_treatment', appt_topts: treatments.map(function(t){ return t.id; }), appt_correlation_id: CID }));\n  }\n  return notHandled();\n}\n\n// ---- Cancelar todo el sub-flujo ----\nif (/^\\s*(cancelar|salir|cancel)\\s*$/i.test(low) && step !== 'cancel_pick'){\n  if (state.appt_hold_id){ try { await api('cancel', { tenant_id, appointment_id: state.appt_hold_id, correlation_id: CID }); } catch(e){} }\n  return out(true, 'Listo, cancelé el proceso. Escribí \"turno\" cuando quieras agendar.', st0Clear());\n}\n\nif (step === 'choose_treatment'){\n  const n = numIn(text); const ids = state.appt_topts || [];\n  if (!n || n < 1 || n > ids.length) return out(true, 'Respondé con el número del tratamiento, por favor.', state);\n  const tid = ids[n-1];\n  let pj; try { pj = await api('catalog', { tenant_id, kind:'professionals', treatment_id: tid }); } catch(e){ return out(true, 'No pude cargar los profesionales ahora.', state); }\n  const profs = (pj && pj.professionals) || [];\n  if (profs.length === 0) return out(true, 'No hay profesionales disponibles para ese tratamiento.', st0Clear());\n  const ns = Object.assign({}, state, { appt_treatment_id: tid });\n  if (profs.length === 1){ ns.appt_professional_id = profs[0].id; return await showAvailability(ns, 0); }\n  let msg = '¿Con qué profesional?\\n0. Cualquiera disponible\\n';\n  profs.forEach(function(p,i){ msg += (i+1) + '. ' + p.first_name + (p.last_name ? (' ' + p.last_name) : '') + '\\n'; });\n  msg += 'Respondé con el número.';\n  return out(true, msg, Object.assign({}, ns, { appt_step:'choose_professional', appt_popts: profs.map(function(p){ return p.id; }) }));\n}\n\nif (step === 'choose_professional'){\n  const n = numIn(text); const ids = state.appt_popts || [];\n  if (n === null || n < 0 || n > ids.length) return out(true, 'Respondé con el número (0 = cualquiera).', state);\n  const pid = n === 0 ? null : ids[n-1];\n  return await showAvailability(Object.assign({}, state, { appt_professional_id: pid }), 0);\n}\n\nif (step === 'choose_slot'){\n  if (/(^|\\s)mas(\\s|$)/i.test(low) || /más/.test(low)) return await showAvailability(state, (state.appt_slot_cursor || 0) + 6);\n  const n = numIn(text); const offered = state.appt_offered || [];\n  if (!n || n < 1 || n > offered.length) return out(true, 'Respondé con el número del horario, o MAS para ver más.', state);\n  const pick = offered[n-1];\n  if (state.appt_mode === 'reschedule'){\n    try { await api('reschedule', { tenant_id, appointment_id: state.appt_resch_id, new_start_at: pick.s, new_professional_id: pick.p, idempotency_key: CID + ':resch:' + pick.s, correlation_id: CID }); }\n    catch(e){ return out(true, 'Ese horario ya no está disponible. Elegí otro:', state); }\n    return out(true, '¡Listo! Reprogramamos tu turno para ' + fmt(pick.s) + '.', st0Clear());\n  }\n  let hr;\n  try { hr = await api('hold', { tenant_id, professional_id: pick.p, treatment_id: state.appt_treatment_id, start_at: pick.s, contact_id, phone, idempotency_key: CID + ':hold:' + pick.s, correlation_id: CID }); }\n  catch(e){ return out(true, 'Ese horario ya no está disponible. Elegí otro de la lista.', state); }\n  const appt = hr && hr.appointment;\n  if (!appt) return out(true, 'Ese horario ya no está disponible. Elegí otro de la lista.', state);\n  return out(true, 'Reservé provisoriamente ' + fmt(pick.s) + '. ¿Confirmás? (respondé SÍ o NO)', Object.assign({}, state, { appt_step:'confirm', appt_hold_id: appt.id, appt_hold_label: fmt(pick.s) }));\n}\n\nif (step === 'confirm'){\n  if (/^\\s*(si|sí|s|dale|ok|oka|confirmo|confirmar|listo)/i.test(low)){\n    try { await api('confirm', { tenant_id, appointment_id: state.appt_hold_id, correlation_id: CID }); }\n    catch(e){ return out(true, 'La reserva expiró. Escribí \"turno\" para empezar de nuevo.', st0Clear()); }\n    return out(true, '¡Turno confirmado! Te esperamos el ' + (state.appt_hold_label || '') + '. Si necesitás cancelar o reprogramar, escribime.', st0Clear());\n  }\n  if (/^\\s*(no|n)/i.test(low)){\n    if (state.appt_hold_id){ try { await api('cancel', { tenant_id, appointment_id: state.appt_hold_id, correlation_id: CID }); } catch(e){} }\n    return out(true, 'Listo, no agendé nada. Escribí \"turno\" para elegir otro horario.', st0Clear());\n  }\n  return out(true, 'Respondé SÍ para confirmar o NO para cancelar.', state);\n}\n\nif (step === 'cancel_pick'){\n  const n = numIn(text); const ids = state.appt_options || [];\n  if (!n || n < 1 || n > ids.length) return out(true, 'Respondé con el número del turno a cancelar.', state);\n  try { await api('cancel', { tenant_id, appointment_id: ids[n-1], correlation_id: CID }); } catch(e){ return out(true, 'No pude cancelar ahora, probá más tarde.', st0Clear()); }\n  return out(true, 'Tu turno fue cancelado. El horario vuelve a quedar disponible.', st0Clear());\n}\n\nif (step === 'resch_pick'){\n  const n = numIn(text); const ids = state.appt_options || []; const tids = state.appt_topts_resch || [];\n  if (!n || n < 1 || n > ids.length) return out(true, 'Respondé con el número del turno a reprogramar.', state);\n  return await showAvailability(Object.assign({}, state, { appt_mode:'reschedule', appt_resch_id: ids[n-1], appt_treatment_id: tids[n-1] }), 0);\n}\n\nreturn notHandled();"
+      },
+      "id": "e37614f4-5d93-4239-b408-5176b063843c",
+      "name": "Appt engine",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3220,
+        1500
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "ee78a658-93cb-4ba3-89b3-c8b722d6fea9",
+              "leftValue": "={{ $('Appt engine').item.json.handled }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        }
+      },
+      "id": "da070609-1588-443c-9f96-bf11766e18cc",
+      "name": "Appt manejó?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3500,
+        1500
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/contacts?id=eq.{{ $('contact_id').item.json.contact_id }}",
+        "options": {},
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($('Appt engine').item.json.patch_body) }}"
+      },
+      "id": "b083618e-4b22-4631-b2b8-46443562905e",
+      "name": "Patch flow_state (appt)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3780,
+        1500
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "07a12fb8-9c8d-4bc6-a5dd-f34e3315dd9e",
+              "leftValue": "={{ $('Appt engine').item.json.should_send }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        }
+      },
+      "id": "70a6f22f-4150-4600-a423-0af6d4e00af1",
+      "name": "Enviar? (appt)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        4060,
+        1500
+      ]
+    },
+    {
+      "parameters": {
+        "amount": "={{ $('Appt engine').item.json.reply_delay_seconds }}",
+        "unit": "seconds"
+      },
+      "id": "3682b84d-2a24-4dbc-89e8-23081961cb5d",
+      "name": "Wait delay (appt)",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        4340,
+        1500
+      ],
+      "webhookId": "e52e2702-151f-4041-9abc-1c28b29eab8e"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/v21.0/{{ $('contact_id').item.json.phone_number_id }}/messages",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 100
+            }
+          }
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.WHATSAPP_API_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ messaging_product: 'whatsapp', to: $('contact_id').item.json.from, type: 'text', text: { body: $('Appt engine').item.json.reply } }) }}"
+      },
+      "id": "306ff0a7-d9f4-4fcf-b73c-a1762c577e87",
+      "name": "Send WhatsApp (appt)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4620,
+        1500
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/messages",
+        "options": {},
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ tenant_id: $('contact_id').item.json.tenant_id, contact_id: $('contact_id').item.json.contact_id, whatsapp_message_id: (($json.messages && $json.messages[0] && $json.messages[0].id) || null), direction: 'outbound', content: $('Appt engine').item.json.reply, message_type: 'text', sent_at: new Date().toISOString() }) }}"
+      },
+      "id": "68b2b7ac-e3aa-4cc0-aa9f-0e1303894b25",
+      "name": "Insert outbound (appt)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4900,
+        1500
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/failed_messages",
+        "options": {},
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ tenant_id: $('contact_id').item.json.tenant_id, contact_phone: $('contact_id').item.json.from, content: $('Appt engine').item.json.reply, error: 'fallo el envio a Meta (appt)' }) }}"
+      },
+      "id": "e7c79272-0d34-44c9-8c28-2763993797e6",
+      "name": "Log failed (send appt)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5180,
+        1660
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/event_logs",
+        "options": {},
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ tenant_id: $('contact_id').item.json.tenant_id, contact_id: $('contact_id').item.json.contact_id, phone: $('contact_id').item.json.from, source: 'n8n', level: 'info', event: 'appt_flow', message: ($('Appt engine').item.json.reply || '').slice(0, 300), data: { text: $('contact_id').item.json.text, handled: $('Appt engine').item.json.handled, step: ($('Appt engine').item.json.patch_body.flow_state || {}).appt_step, correlation_id: ($('Appt engine').item.json.patch_body.flow_state || {}).appt_correlation_id } }) }}"
+      },
+      "id": "ad3c1f19-e567-4ed0-bdee-84a608d7aa2e",
+      "name": "Log flow (appt)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3780,
+        1820
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "content": "## WhatsApp Agent\\n\\nEnv requeridas (Settings -> Variables o env del contenedor):\\n- SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY\\n- ANTHROPIC_API_KEY\\n- WHATSAPP_API_TOKEN\\n- N8N_WEBHOOK_SECRET\\n- CRM_BASE_URL (alerta handoff)\\n- CRM_INTERNAL_URL + APPOINTMENTS_INTERNAL_SECRET (sub-flujo de turnos)\\n\\nRequiere N8N_BLOCK_ENV_ACCESS_IN_NODE=false para leer $env.\\n\\nDocs Meta: https://developers.facebook.com/docs/whatsapp/cloud-api/reference/messages",
+        "height": 360,
         "width": 360,
         "color": 4
       },
-      "id": "719b81bf-0499-4979-9e63-9fa980460639",
+      "id": "57e2d3ba-f019-46cc-88f4-4904b57bbd28",
       "name": "Notas",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
@@ -1928,7 +2217,92 @@
       "main": [
         [
           {
+            "node": "Appt engine",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Appt engine": {
+      "main": [
+        [
+          {
+            "node": "Appt manejó?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Log flow (appt)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Appt manejó?": {
+      "main": [
+        [
+          {
+            "node": "Patch flow_state (appt)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
             "node": "Modo menu?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Patch flow_state (appt)": {
+      "main": [
+        [
+          {
+            "node": "Enviar? (appt)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar? (appt)": {
+      "main": [
+        [
+          {
+            "node": "Wait delay (appt)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait delay (appt)": {
+      "main": [
+        [
+          {
+            "node": "Send WhatsApp (appt)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send WhatsApp (appt)": {
+      "main": [
+        [
+          {
+            "node": "Insert outbound (appt)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log failed (send appt)",
             "type": "main",
             "index": 0
           }

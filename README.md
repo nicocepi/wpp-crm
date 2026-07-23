@@ -364,6 +364,47 @@ y HTTP plano con el VPS — no hace falta certificado en el VPS).
 > el tramo Cloudflare↔VPS); rotar las credenciales de negocio (Supabase, Meta,
 > Anthropic, SMTP) — los secretos *internos* (n8n) ya se rotaron al desplegar.
 
+## Módulo de turnos (local)
+
+Agendamiento de turnos por WhatsApp + panel. Arquitectura y detalle: [`docs/appointments.md`](docs/appointments.md).
+
+**Migración y datos demo** (SQL Editor de Supabase, en orden):
+1. Correr `supabase/appointments.sql` (paso 16 de [MIGRATIONS.md](supabase/MIGRATIONS.md)).
+2. (Opcional, no-prod) Correr `supabase/seed-appointments.sql` → crea "Centro Odontológico Demo"
+   con especialidades, tratamientos, profesionales, horarios y excepciones.
+3. Regenerar los tipos si cambiaste el esquema: se mantienen a mano en `apps/crm/lib/database.types.ts`.
+
+**Variables nuevas** (ver `.env.example`): `APPOINTMENTS_INTERNAL_SECRET`, `CRM_INTERNAL_URL`
+(en `apps/crm/.env.local`; n8n usa las mismas para llamar a los endpoints internos).
+
+**Levantar y probar**:
+```bash
+pnpm dev:crm                 # panel en :3000
+node n8n/build-workflow.mjs  # regenera el workflow; re-importar en n8n
+```
+- **Panel**: entrá como un usuario del tenant demo (o impersonando desde admin). Con el módulo
+  habilitado aparece **Turnos** en el menú. Desde ahí: agenda diaria, alta manual, confirmar,
+  cancelar, reprogramar, completar/ausente, notas; y **Configuración** para especialidades,
+  tratamientos, profesionales, horarios y excepciones.
+- **WhatsApp (flujo)**: importar el workflow regenerado en n8n y escribir "quiero un turno".
+  El bot ofrece tratamiento → profesional → horarios reales → retención → confirmación.
+  También "cancelar mi turno" / "reprogramar" / "mis turnos".
+
+**Tests**:
+```bash
+pnpm --filter crm test       # unitarios del motor de disponibilidad (sin DB)
+# Integración de concurrencia (contra Supabase local):
+SUPABASE_TEST_URL=http://127.0.0.1:54321 \
+SUPABASE_TEST_SERVICE_ROLE_KEY=<service_role local> \
+  pnpm --filter crm test
+```
+
+**Simular error de sync / desconectar Google**: Fase 2 (no implementado). El esquema ya trae
+`sync_status`/`gcal_sync_outbox`; en el panel el botón "Reintentar sync" encola en el outbox si
+`gcal_sync_enabled` está activo.
+
+**Limpiar la data demo**: bloque "LIMPIEZA" comentado al final de `supabase/seed-appointments.sql`.
+
 ## Referencia rápida
 
 | Servicio | Local | Producción |

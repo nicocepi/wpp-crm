@@ -8,6 +8,7 @@ import {
   BarChart3,
   ScrollText,
   HelpCircle,
+  CalendarDays,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -20,6 +21,7 @@ const ICONS = {
   stats: BarChart3,
   logs: ScrollText,
   help: HelpCircle,
+  agenda: CalendarDays,
 } satisfies Record<string, LucideIcon>;
 
 export function SidebarNav({ items }: { items: NavItem[] }) {

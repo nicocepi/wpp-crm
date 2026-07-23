@@ -21,6 +21,8 @@ Los cambios de base se aplican corriendo estos archivos **en orden** en el SQL E
 | 13 | `multi-agent-handoff.sql` | `contacts.handoff_by/handoff_by_name/handoff_at` (ownership del handoff) + `profiles.display_name`. |
 | 14 | `tenant-admin-role.sql` | Amplía el CHECK de `profiles.role` para incluir `tenant_admin` (admin por-tenant: override de handoff, no admin global). |
 | 15 | `handoff-alert-config.sql` | `bot_configs.alert_email` + `alert_delay_minutes` (alerta por email cuando un handoff queda sin atender). |
+| 16 | `appointments.sql` | **Módulo de turnos**: tablas (settings, specialties, treatments, professionals, schedules, exceptions, appointments, appointment_audit, gcal_*), RLS por tenant, función `book_appointment` (anti-doble-reserva con advisory lock + cupo), `confirm_held_appointment`, `expire_appointment_holds`, trigger `updated_at`, realtime de `appointments`. |
+| — | `seed-appointments.sql` | **(opcional, no-prod)** Data demo "Centro Odontológico Demo" para probar disponibilidad/cupos/excepciones y el flujo de WhatsApp. |
 
 ## Nota sobre `schema.sql` (drift)
 `schema.sql` es un **snapshot al día** del esquema completo (incluye lo que agregan las

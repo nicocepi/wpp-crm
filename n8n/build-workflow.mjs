@@ -1021,12 +1021,287 @@ const logFlowAi = push(
 );
 logFlowAi.position = [3640, -40];
 
+// ===== Sub-flujo de TURNOS (agendamiento por WhatsApp) =====================
+// Máquina de estados determinística. NO inventa horarios: consulta los
+// endpoints internos del CRM (que calculan disponibilidad y crean/cancelan/
+// reprograman turnos con chequeo de cupo e idempotencia). El estado del
+// sub-flujo vive en contacts.flow_state (appt_*), reusando el estado existente.
+// Requiere env: CRM_INTERNAL_URL, APPOINTMENTS_INTERNAL_SECRET.
+const yT = 1500;
+
+const apptEngine = push(
+  code(
+    "Appt engine",
+    `const base = ($env.CRM_INTERNAL_URL || '').replace(/\\/+$/, '');
+const secret = $env.APPOINTMENTS_INTERNAL_SECRET || '';
+const helpers = this.helpers;
+const c = $('contact_id').first().json;
+const tenant_id = c.tenant_id;
+const contact_id = c.contact_id;
+const phone = c.from;
+const text = (c.text || '').toString().trim();
+const low = text.toLowerCase();
+const st0 = (c.flow_state && typeof c.flow_state === 'object') ? c.flow_state : {};
+const state = Object.assign({}, st0);
+const reply_delay_seconds = 1;
+
+function out(handled, reply, newState){
+  return [{ json: { handled: !!handled, should_send: !!(handled && reply), reply: reply || '', reply_delay_seconds, patch_body: { flow_state: (newState || state) } } }];
+}
+function notHandled(){ return out(false, '', st0); }
+function st0Clear(){ const s = Object.assign({}, st0); ['appt_step','appt_treatment_id','appt_professional_id','appt_offered','appt_slot_cursor','appt_hold_id','appt_hold_label','appt_mode','appt_resch_id','appt_options','appt_topts','appt_popts','appt_topts_resch'].forEach(function(k){ delete s[k]; }); s.appt_correlation_id = null; return s; }
+
+if (c.handoff === true) return notHandled();
+if (!base || !secret) return notHandled();
+
+async function api(path, body){
+  return await helpers.httpRequest({ method: 'POST', url: base + '/api/internal/appointments/' + path, headers: { 'x-appointment-secret': secret, 'Content-Type': 'application/json' }, body: body, json: true });
+}
+function todayAR(){ return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date()); }
+function addDays(ymd, n){ const a = ymd.split('-').map(Number); const dt = new Date(Date.UTC(a[0], a[1]-1, a[2], 12)); dt.setUTCDate(dt.getUTCDate()+n); return dt.getUTCFullYear()+'-'+String(dt.getUTCMonth()+1).padStart(2,'0')+'-'+String(dt.getUTCDate()).padStart(2,'0'); }
+function fmt(iso, tz){ try { return new Intl.DateTimeFormat('es-AR', { timeZone: tz || 'America/Argentina/Buenos_Aires', weekday:'short', day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }).format(new Date(iso)); } catch(e){ return iso; } }
+function numIn(t){ const m = t.match(/\\d+/); return m ? parseInt(m[0],10) : null; }
+
+const CID = state.appt_correlation_id || (Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,10));
+const step = state.appt_step || null;
+const wantsBook = /(turno|turnos|agendar|reservar|cita|sacar)/.test(low) && !/cancel|reprogram/.test(low);
+const wantsCancel = /cancel/.test(low);
+const wantsResch = /(reprogram|cambiar.*turno|mover.*turno|pasar.*turno)/.test(low);
+const wantsList = /(mis turnos|cuando tengo|cuándo tengo|que turno|qué turno)/.test(low);
+
+async function showAvailability(ns, cursor){
+  const from = addDays(todayAR(), 0);
+  const to = addDays(todayAR(), 21);
+  let res;
+  try { res = await api('availability', { tenant_id, treatment_id: ns.appt_treatment_id, professional_id: ns.appt_professional_id || null, from: from, to: to }); }
+  catch(e){ return out(true, 'No pude consultar la disponibilidad ahora. Probá de nuevo en un rato.', ns); }
+  const slots = (res && res.slots) || [];
+  const tz = (res && res.timezone) || 'America/Argentina/Buenos_Aires';
+  const start = cursor || 0;
+  const page = slots.slice(start, start+6);
+  if (page.length === 0){
+    if (start > 0) return out(true, 'No hay más horarios. Respondé con el número de uno anterior o escribí "cancelar".', Object.assign({}, ns, { appt_step:'choose_slot' }));
+    return out(true, 'No encontré horarios disponibles en los próximos días. Escribí "cancelar" para salir.', st0Clear());
+  }
+  const offered = page.map(function(s){ return { p: s.professionalId, s: s.startAt }; });
+  let msg = 'Estos son los horarios disponibles:\\n';
+  page.forEach(function(s,i){ msg += (i+1) + '. ' + fmt(s.startAt, tz) + '\\n'; });
+  msg += 'Respondé con el número. Escribí MAS para ver más, o "cancelar" para salir.';
+  return out(true, msg, Object.assign({}, ns, { appt_step:'choose_slot', appt_offered: offered, appt_slot_cursor: start, appt_correlation_id: CID }));
+}
+
+// ---- Sin sub-flujo activo: detectar intención ----
+if (!step){
+  if (wantsList || wantsCancel || wantsResch){
+    let up;
+    try { up = await api('upcoming', { tenant_id, contact_id }); } catch(e){ return notHandled(); }
+    const appts = (up && up.appointments) || [];
+    if (appts.length === 0) return out(true, 'No tenés turnos futuros agendados.', st0Clear());
+    let msg = 'Tus próximos turnos:\\n';
+    appts.forEach(function(a,i){ msg += (i+1) + '. ' + fmt(a.start_at) + '\\n'; });
+    if (wantsList && !wantsCancel && !wantsResch) return out(true, msg + '¿Necesitás algo más? Podés escribir "cancelar turno" o "reprogramar".', st0Clear());
+    const ids = appts.map(function(a){ return a.id; });
+    const tids = appts.map(function(a){ return a.treatment_id; });
+    const cancel = wantsCancel && !wantsResch;
+    msg += cancel ? 'Respondé con el número del turno a cancelar.' : 'Respondé con el número del turno a reprogramar.';
+    return out(true, msg, Object.assign({}, st0, { appt_step: cancel ? 'cancel_pick' : 'resch_pick', appt_options: ids, appt_topts_resch: tids, appt_correlation_id: CID }));
+  }
+  if (wantsBook){
+    let cat;
+    try { cat = await api('catalog', { tenant_id, kind: 'treatments' }); } catch(e){ return notHandled(); }
+    const treatments = (cat && cat.treatments) || [];
+    if (treatments.length === 0) return notHandled();
+    let msg = '¡Perfecto! ¿Qué tratamiento necesitás?\\n';
+    treatments.forEach(function(t,i){ msg += (i+1) + '. ' + t.name + ' (' + t.duration_minutes + ' min)\\n'; });
+    msg += 'Respondé con el número.';
+    return out(true, msg, Object.assign({}, st0, { appt_step:'choose_treatment', appt_topts: treatments.map(function(t){ return t.id; }), appt_correlation_id: CID }));
+  }
+  return notHandled();
+}
+
+// ---- Cancelar todo el sub-flujo ----
+if (/^\\s*(cancelar|salir|cancel)\\s*$/i.test(low) && step !== 'cancel_pick'){
+  if (state.appt_hold_id){ try { await api('cancel', { tenant_id, appointment_id: state.appt_hold_id, correlation_id: CID }); } catch(e){} }
+  return out(true, 'Listo, cancelé el proceso. Escribí "turno" cuando quieras agendar.', st0Clear());
+}
+
+if (step === 'choose_treatment'){
+  const n = numIn(text); const ids = state.appt_topts || [];
+  if (!n || n < 1 || n > ids.length) return out(true, 'Respondé con el número del tratamiento, por favor.', state);
+  const tid = ids[n-1];
+  let pj; try { pj = await api('catalog', { tenant_id, kind:'professionals', treatment_id: tid }); } catch(e){ return out(true, 'No pude cargar los profesionales ahora.', state); }
+  const profs = (pj && pj.professionals) || [];
+  if (profs.length === 0) return out(true, 'No hay profesionales disponibles para ese tratamiento.', st0Clear());
+  const ns = Object.assign({}, state, { appt_treatment_id: tid });
+  if (profs.length === 1){ ns.appt_professional_id = profs[0].id; return await showAvailability(ns, 0); }
+  let msg = '¿Con qué profesional?\\n0. Cualquiera disponible\\n';
+  profs.forEach(function(p,i){ msg += (i+1) + '. ' + p.first_name + (p.last_name ? (' ' + p.last_name) : '') + '\\n'; });
+  msg += 'Respondé con el número.';
+  return out(true, msg, Object.assign({}, ns, { appt_step:'choose_professional', appt_popts: profs.map(function(p){ return p.id; }) }));
+}
+
+if (step === 'choose_professional'){
+  const n = numIn(text); const ids = state.appt_popts || [];
+  if (n === null || n < 0 || n > ids.length) return out(true, 'Respondé con el número (0 = cualquiera).', state);
+  const pid = n === 0 ? null : ids[n-1];
+  return await showAvailability(Object.assign({}, state, { appt_professional_id: pid }), 0);
+}
+
+if (step === 'choose_slot'){
+  if (/(^|\\s)mas(\\s|$)/i.test(low) || /más/.test(low)) return await showAvailability(state, (state.appt_slot_cursor || 0) + 6);
+  const n = numIn(text); const offered = state.appt_offered || [];
+  if (!n || n < 1 || n > offered.length) return out(true, 'Respondé con el número del horario, o MAS para ver más.', state);
+  const pick = offered[n-1];
+  if (state.appt_mode === 'reschedule'){
+    try { await api('reschedule', { tenant_id, appointment_id: state.appt_resch_id, new_start_at: pick.s, new_professional_id: pick.p, idempotency_key: CID + ':resch:' + pick.s, correlation_id: CID }); }
+    catch(e){ return out(true, 'Ese horario ya no está disponible. Elegí otro:', state); }
+    return out(true, '¡Listo! Reprogramamos tu turno para ' + fmt(pick.s) + '.', st0Clear());
+  }
+  let hr;
+  try { hr = await api('hold', { tenant_id, professional_id: pick.p, treatment_id: state.appt_treatment_id, start_at: pick.s, contact_id, phone, idempotency_key: CID + ':hold:' + pick.s, correlation_id: CID }); }
+  catch(e){ return out(true, 'Ese horario ya no está disponible. Elegí otro de la lista.', state); }
+  const appt = hr && hr.appointment;
+  if (!appt) return out(true, 'Ese horario ya no está disponible. Elegí otro de la lista.', state);
+  return out(true, 'Reservé provisoriamente ' + fmt(pick.s) + '. ¿Confirmás? (respondé SÍ o NO)', Object.assign({}, state, { appt_step:'confirm', appt_hold_id: appt.id, appt_hold_label: fmt(pick.s) }));
+}
+
+if (step === 'confirm'){
+  if (/^\\s*(si|sí|s|dale|ok|oka|confirmo|confirmar|listo)/i.test(low)){
+    try { await api('confirm', { tenant_id, appointment_id: state.appt_hold_id, correlation_id: CID }); }
+    catch(e){ return out(true, 'La reserva expiró. Escribí "turno" para empezar de nuevo.', st0Clear()); }
+    return out(true, '¡Turno confirmado! Te esperamos el ' + (state.appt_hold_label || '') + '. Si necesitás cancelar o reprogramar, escribime.', st0Clear());
+  }
+  if (/^\\s*(no|n)/i.test(low)){
+    if (state.appt_hold_id){ try { await api('cancel', { tenant_id, appointment_id: state.appt_hold_id, correlation_id: CID }); } catch(e){} }
+    return out(true, 'Listo, no agendé nada. Escribí "turno" para elegir otro horario.', st0Clear());
+  }
+  return out(true, 'Respondé SÍ para confirmar o NO para cancelar.', state);
+}
+
+if (step === 'cancel_pick'){
+  const n = numIn(text); const ids = state.appt_options || [];
+  if (!n || n < 1 || n > ids.length) return out(true, 'Respondé con el número del turno a cancelar.', state);
+  try { await api('cancel', { tenant_id, appointment_id: ids[n-1], correlation_id: CID }); } catch(e){ return out(true, 'No pude cancelar ahora, probá más tarde.', st0Clear()); }
+  return out(true, 'Tu turno fue cancelado. El horario vuelve a quedar disponible.', st0Clear());
+}
+
+if (step === 'resch_pick'){
+  const n = numIn(text); const ids = state.appt_options || []; const tids = state.appt_topts_resch || [];
+  if (!n || n < 1 || n > ids.length) return out(true, 'Respondé con el número del turno a reprogramar.', state);
+  return await showAvailability(Object.assign({}, state, { appt_mode:'reschedule', appt_resch_id: ids[n-1], appt_treatment_id: tids[n-1] }), 0);
+}
+
+return notHandled();`,
+  ),
+);
+apptEngine.position = [3220, yT];
+
+const apptHandledIf = push(
+  ifBool("Appt manejó?", "={{ $('Appt engine').item.json.handled }}", yT),
+);
+apptHandledIf.position = [3500, yT];
+
+const patchApptState = push(
+  http(
+    "Patch flow_state (appt)",
+    "PATCH",
+    `=${SUPA}/contacts?id=eq.{{ $('contact_id').item.json.contact_id }}`,
+    {
+      headers: supaHeaders([{ name: "Prefer", value: "return=minimal" }]),
+      jsonBody: "={{ JSON.stringify($('Appt engine').item.json.patch_body) }}",
+    },
+    yT,
+  ),
+);
+patchApptState.position = [3780, yT];
+
+const enviarAppt = push(
+  ifBool("Enviar? (appt)", "={{ $('Appt engine').item.json.should_send }}", yT),
+);
+enviarAppt.position = [4060, yT];
+
+const waitAppt = push(
+  node(
+    "Wait delay (appt)",
+    "n8n-nodes-base.wait",
+    1.1,
+    { amount: "={{ $('Appt engine').item.json.reply_delay_seconds }}", unit: "seconds" },
+    yT,
+    { webhookId: randomUUID() },
+  ),
+);
+waitAppt.position = [4340, yT];
+
+const sendAppt = push(
+  http(
+    "Send WhatsApp (appt)",
+    "POST",
+    "=https://graph.facebook.com/v21.0/{{ $('contact_id').item.json.phone_number_id }}/messages",
+    {
+      headers: metaHeaders,
+      jsonBody:
+        "={{ JSON.stringify({ messaging_product: 'whatsapp', to: $('contact_id').item.json.from, type: 'text', text: { body: $('Appt engine').item.json.reply } }) }}",
+      extra: { onError: "continueErrorOutput" },
+      options: { batching: { batch: { batchSize: 1, batchInterval: 100 } } },
+    },
+    yT,
+  ),
+);
+sendAppt.position = [4620, yT];
+
+const insertOutboundAppt = push(
+  http(
+    "Insert outbound (appt)",
+    "POST",
+    `=${SUPA}/messages`,
+    {
+      headers: supaHeaders([{ name: "Prefer", value: "return=minimal" }]),
+      jsonBody:
+        "={{ JSON.stringify({ tenant_id: $('contact_id').item.json.tenant_id, contact_id: $('contact_id').item.json.contact_id, whatsapp_message_id: (($json.messages && $json.messages[0] && $json.messages[0].id) || null), direction: 'outbound', content: $('Appt engine').item.json.reply, message_type: 'text', sent_at: new Date().toISOString() }) }}",
+    },
+    yT,
+  ),
+);
+insertOutboundAppt.position = [4900, yT];
+
+const logFailedSendAppt = push(
+  http(
+    "Log failed (send appt)",
+    "POST",
+    `=${SUPA}/failed_messages`,
+    {
+      headers: supaHeaders([{ name: "Prefer", value: "return=minimal" }]),
+      jsonBody:
+        "={{ JSON.stringify({ tenant_id: $('contact_id').item.json.tenant_id, contact_phone: $('contact_id').item.json.from, content: $('Appt engine').item.json.reply, error: 'fallo el envio a Meta (appt)' }) }}",
+    },
+    yT + 160,
+  ),
+);
+logFailedSendAppt.position = [5180, yT + 160];
+
+// Log durable de la decisión del sub-flujo de turnos (event_logs).
+const logFlowAppt = push(
+  http(
+    "Log flow (appt)",
+    "POST",
+    `=${SUPA}/event_logs`,
+    {
+      headers: supaHeaders([{ name: "Prefer", value: "return=minimal" }]),
+      jsonBody:
+        "={{ JSON.stringify({ tenant_id: $('contact_id').item.json.tenant_id, contact_id: $('contact_id').item.json.contact_id, phone: $('contact_id').item.json.from, source: 'n8n', level: 'info', event: 'appt_flow', message: ($('Appt engine').item.json.reply || '').slice(0, 300), data: { text: $('contact_id').item.json.text, handled: $('Appt engine').item.json.handled, step: ($('Appt engine').item.json.patch_body.flow_state || {}).appt_step, correlation_id: ($('Appt engine').item.json.patch_body.flow_state || {}).appt_correlation_id } }) }}",
+      extra: { onError: "continueRegularOutput" },
+    },
+    yT + 320,
+  ),
+);
+logFlowAppt.position = [3780, yT + 320];
+
 // Sticky note con docs
 const sticky = {
   parameters: {
     content:
-      "## WhatsApp Agent\\n\\nEnv requeridas (Settings -> Variables o env del contenedor):\\n- SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY\\n- ANTHROPIC_API_KEY\\n- WHATSAPP_API_TOKEN\\n- N8N_WEBHOOK_SECRET\\n\\nRequiere N8N_BLOCK_ENV_ACCESS_IN_NODE=false para leer $env.\\n\\nDocs Meta: https://developers.facebook.com/docs/whatsapp/cloud-api/reference/messages",
-    height: 320,
+      "## WhatsApp Agent\\n\\nEnv requeridas (Settings -> Variables o env del contenedor):\\n- SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY\\n- ANTHROPIC_API_KEY\\n- WHATSAPP_API_TOKEN\\n- N8N_WEBHOOK_SECRET\\n- CRM_BASE_URL (alerta handoff)\\n- CRM_INTERNAL_URL + APPOINTMENTS_INTERNAL_SECRET (sub-flujo de turnos)\\n\\nRequiere N8N_BLOCK_ENV_ACCESS_IN_NODE=false para leer $env.\\n\\nDocs Meta: https://developers.facebook.com/docs/whatsapp/cloud-api/reference/messages",
+    height: 360,
     width: 360,
     color: 4,
   },
@@ -1075,7 +1350,18 @@ connect("Insert inbound (media)", "Get bot_config");
 connect("Insert inbound", "Get bot_config");
 // Ruteo por tipo de flujo
 connect("Get bot_config", "bot cfg");
-connect("bot cfg", "Modo menu?");
+// Primero pasa por el sub-flujo de TURNOS: si lo maneja, corta ahí; si no,
+// sigue al ruteo normal (menú / IA). No afecta a tenants sin el módulo.
+connect("bot cfg", "Appt engine");
+connect("Appt engine", "Appt manejó?");
+connect("Appt engine", "Log flow (appt)"); // log durable (fan-out)
+connect("Appt manejó?", "Patch flow_state (appt)", 0); // true  -> turnos lo maneja
+connect("Appt manejó?", "Modo menu?", 1); // false -> flujo normal (menú / IA)
+connect("Patch flow_state (appt)", "Enviar? (appt)");
+connect("Enviar? (appt)", "Wait delay (appt)", 0);
+connect("Wait delay (appt)", "Send WhatsApp (appt)");
+connect("Send WhatsApp (appt)", "Insert outbound (appt)", 0); // éxito
+connect("Send WhatsApp (appt)", "Log failed (send appt)", 1); // error
 connect("Modo menu?", "Menu engine", 0); // true  -> rama menú
 connect("Modo menu?", "Get history", 1); // false -> rama IA
 connect("Get history", "prep AI");
