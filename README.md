@@ -374,8 +374,11 @@ Agendamiento de turnos por WhatsApp + panel. Arquitectura y detalle: [`docs/appo
    con especialidades, tratamientos, profesionales, horarios y excepciones.
 3. Regenerar los tipos si cambiaste el esquema: se mantienen a mano en `apps/crm/lib/database.types.ts`.
 
-**Variables nuevas** (ver `.env.example`): `APPOINTMENTS_INTERNAL_SECRET`, `CRM_INTERNAL_URL`
-(en `apps/crm/.env.local`; n8n usa las mismas para llamar a los endpoints internos).
+**Variables nuevas** (ver `.env.example`, en `apps/crm/.env.local`):
+- `APPOINTMENTS_INTERNAL_SECRET`, `CRM_INTERNAL_URL` — n8n las usa para llamar a los endpoints internos.
+- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_OAUTH_REDIRECT_URI`, `GCAL_TOKEN_ENCRYPTION_KEY`
+  — conexión con Google Calendar. Paso a paso para crear las credenciales en
+  [`docs/appointments.md`](docs/appointments.md#crear-las-credenciales-de-google-paso-a-paso).
 
 **Levantar y probar**:
 ```bash
@@ -399,9 +402,14 @@ SUPABASE_TEST_SERVICE_ROLE_KEY=<service_role local> \
   pnpm --filter crm test
 ```
 
-**Simular error de sync / desconectar Google**: Fase 2 (no implementado). El esquema ya trae
-`sync_status`/`gcal_sync_outbox`; en el panel el botón "Reintentar sync" encola en el outbox si
-`gcal_sync_enabled` está activo.
+**Google Calendar**: en `/agenda/config` → sección Google Calendar → "Conectar con Google" (redirige
+al consentimiento de Google y vuelve). Una vez conectado, activá "Sincronizar turnos automáticamente".
+Los turnos confirmados/cancelados/reprogramados se sincronizan al momento; si falla, el turno queda
+`sync_status='failed'` (visible en la agenda) y el botón **"Reintentar sync"** reintenta a demanda.
+**Simular un error de sync**: desconectá Google Calendar (o revocá el acceso desde
+[myaccount.google.com/permissions](https://myaccount.google.com/permissions)) y confirmá/cancelá un
+turno con `gcal_sync_enabled` todavía activo — no debería perder el turno, solo marcar el sync como
+fallido. **Desconectar**: botón "Desconectar" en la misma sección.
 
 **Limpiar la data demo**: bloque "LIMPIEZA" comentado al final de `supabase/seed-appointments.sql`.
 

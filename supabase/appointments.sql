@@ -237,6 +237,13 @@ create table if not exists public.gcal_sync_outbox (
   created_at timestamptz default now()
 );
 
+-- Fase 2 (implementada): conexión de Google Calendar por EMPRESA (no por
+-- profesional todavía) — professional_id siempre null en esta fase. Único
+-- (no parcial, a diferencia de otros índices) porque el upsert de PostgREST
+-- necesita un unique constraint pleno para targetear con onConflict.
+create unique index if not exists uq_gcal_connections_tenant
+  on public.gcal_connections (tenant_id);
+
 -- ---------------------------------------------------------------------------
 -- Índices
 -- ---------------------------------------------------------------------------
@@ -580,6 +587,84 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------------
+-- reopen_appointment: transiciona un turno a 'pending'/'confirmed' RE-VALIDANDO
+-- cupo en la misma transacción (excluyéndose a sí mismo del conteo). Necesaria
+-- para cualquier cambio de estado manual (panel admin) que vuelva a un estado
+-- que consume cupo (ej. "Reabrir" un turno completed/no_show a confirmed):
+-- mientras el turno estuvo completed/no_show/cancelled no consumía cupo, así
+-- que otro turno pudo haber ocupado esa franja en el medio. Un update directo
+-- de status (sin este chequeo) permitiría sobre-ocupar la franja.
+-- ---------------------------------------------------------------------------
+create or replace function public.reopen_appointment(
+  p_tenant_id uuid,
+  p_appointment_id uuid,
+  p_status text default 'confirmed',
+  p_correlation_id uuid default null,
+  p_created_by uuid default null
+) returns public.appointments
+language plpgsql security definer set search_path = public as $$
+declare
+  v_jwt_role text := coalesce(nullif(current_setting('request.jwt.claims', true), '')::json ->> 'role', 'authenticated');
+  v_old public.appointments;
+  v_row public.appointments;
+  v_max int;
+  v_occupied int;
+begin
+  if p_status not in ('pending','confirmed') then
+    raise exception 'invalid_status';
+  end if;
+  if v_jwt_role <> 'service_role' and p_tenant_id <> public.current_tenant_id() then
+    raise exception 'tenant_mismatch';
+  end if;
+
+  select * into v_old from public.appointments
+    where id = p_appointment_id and tenant_id = p_tenant_id
+    for update;
+  if not found then
+    raise exception 'appointment_not_found';
+  end if;
+  if v_old.professional_id is null then
+    raise exception 'invalid_professional';
+  end if;
+
+  -- Mismo lock que book_appointment: serializa contra creaciones/reaperturas
+  -- concurrentes en la misma franja del profesional.
+  perform pg_advisory_xact_lock(
+    hashtextextended(v_old.professional_id::text || '|' || v_old.start_at::text, 0)
+  );
+
+  v_max := public.appt_resolve_max_per_slot(v_old.professional_id, v_old.treatment_id);
+
+  select count(*) into v_occupied
+  from public.appointments a
+  where a.tenant_id = p_tenant_id
+    and a.professional_id = v_old.professional_id
+    and a.id <> p_appointment_id
+    and a.status in ('held','pending','confirmed')
+    and (a.status <> 'held' or a.hold_expires_at > now())
+    and a.start_at < v_old.end_at
+    and a.end_at > v_old.start_at;
+
+  if v_occupied >= v_max then
+    raise exception 'slot_full';
+  end if;
+
+  update public.appointments
+    set status = p_status, hold_expires_at = null
+    where id = p_appointment_id
+    returning * into v_row;
+
+  insert into public.appointment_audit (tenant_id, appointment_id, actor_user_id, actor_source, action, old_values, new_values, correlation_id)
+  values (
+    p_tenant_id, v_row.id, p_created_by,
+    case when v_jwt_role = 'service_role' then 'whatsapp' else 'admin' end,
+    'reopened', to_jsonb(v_old), to_jsonb(v_row), p_correlation_id
+  );
+
+  return v_row;
+end $$;
+
+-- ---------------------------------------------------------------------------
 -- expire_appointment_holds: housekeeping de retenciones vencidas. Las consultas
 -- ya ignoran holds vencidos (lazy), así que esto solo limpia. Devuelve la
 -- cantidad expirada. Opcionalmente se agenda con pg_cron (ver abajo).
@@ -607,6 +692,7 @@ end $$;
 -- Permisos de ejecución (authenticated = panel; service_role = n8n).
 grant execute on function public.book_appointment(uuid,uuid,uuid,uuid,timestamptz,int,text,uuid,text,text,int,text,uuid,uuid,text) to authenticated, service_role;
 grant execute on function public.confirm_held_appointment(uuid,uuid,uuid,uuid) to authenticated, service_role;
+grant execute on function public.reopen_appointment(uuid,uuid,text,uuid,uuid) to authenticated, service_role;
 grant execute on function public.appt_resolve_max_per_slot(uuid,uuid) to authenticated, service_role;
 grant execute on function public.expire_appointment_holds() to service_role;
 

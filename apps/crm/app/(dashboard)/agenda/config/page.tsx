@@ -21,6 +21,7 @@ export default async function AgendaConfigPage() {
     { data: profSpecialties },
     { data: schedules },
     { data: exceptions },
+    { data: gcalConnection },
   ] = await Promise.all([
     supabase.from("appointment_settings").select("*").eq("tenant_id", tenant.id).maybeSingle(),
     supabase.from("specialties").select("*").eq("tenant_id", tenant.id).order("name"),
@@ -30,6 +31,11 @@ export default async function AgendaConfigPage() {
     supabase.from("professional_specialties").select("*"),
     supabase.from("professional_schedules").select("*").eq("tenant_id", tenant.id),
     supabase.from("availability_exceptions").select("*").eq("tenant_id", tenant.id).order("date"),
+    supabase
+      .from("gcal_connections")
+      .select("google_account_email, calendar_id, status, last_sync_at")
+      .eq("tenant_id", tenant.id)
+      .maybeSingle(),
   ]);
 
   return (
@@ -44,6 +50,7 @@ export default async function AgendaConfigPage() {
         profSpecialties={profSpecialties ?? []}
         schedules={schedules ?? []}
         exceptions={exceptions ?? []}
+        gcalConnection={gcalConnection ?? null}
       />
     </div>
   );

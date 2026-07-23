@@ -209,6 +209,18 @@ export function AgendaView(props: Props) {
                           <ActionBtn label="Ausente" onClick={() => run(() => setAppointmentStatus(a.id, "no_show"), "Marcado ausente")} disabled={pending} />
                         </>
                       )}
+                      {a.status === "completed" && (
+                        <>
+                          <ActionBtn label="Ausente" onClick={() => run(() => setAppointmentStatus(a.id, "no_show"), "Marcado ausente")} disabled={pending} />
+                          <ActionBtn label="Reabrir" onClick={() => run(() => setAppointmentStatus(a.id, "confirmed"), "Vuelto a confirmado")} disabled={pending} />
+                        </>
+                      )}
+                      {a.status === "no_show" && (
+                        <>
+                          <ActionBtn label="Atendido" onClick={() => run(() => setAppointmentStatus(a.id, "completed"), "Marcado atendido")} disabled={pending} />
+                          <ActionBtn label="Reabrir" onClick={() => run(() => setAppointmentStatus(a.id, "confirmed"), "Vuelto a confirmado")} disabled={pending} />
+                        </>
+                      )}
                       {["held", "pending", "confirmed"].includes(a.status) && (
                         <>
                           <ActionBtn label="Reprogramar" onClick={() => setEditing(a)} disabled={pending} />

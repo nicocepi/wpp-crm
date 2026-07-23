@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database.types";
 import type { Appointment } from "@/lib/types";
 import { resolveTreatmentDuration } from "./repository";
+import { attemptGcalSync } from "./gcal-sync";
 
 type DB = SupabaseClient<Database>;
 
@@ -175,7 +176,47 @@ export async function confirmAppointment(
   const row = data as unknown as Appointment;
   await logEvent(supabase, tenantId, "appt_confirm", "info", "turno confirmado", { appointment_id: row.id }, ctx);
 
-  await maybeQueueGcal(supabase, tenantId, row, "create", ctx);
+  await attemptGcalSync(supabase, tenantId, row.id, "create", ctx);
+  return { ok: true, data: row };
+}
+
+// ---------------------------------------------------------------------------
+// reopen: vuelve un turno a pending/confirmed RE-VALIDANDO cupo en la misma
+// transacción (excluyéndose del conteo). Necesario para "Reabrir" desde el
+// panel: mientras estuvo completed/no_show/cancelled no consumía cupo, así
+// que otro turno pudo haber ocupado esa franja en el medio.
+// ---------------------------------------------------------------------------
+export async function reopenAppointment(
+  supabase: DB,
+  tenantId: string,
+  appointmentId: string,
+  status: "pending" | "confirmed",
+  ctx: Ctx = {},
+): Promise<ServiceResult<Appointment>> {
+  const { data, error } = await supabase.rpc("reopen_appointment", {
+    p_tenant_id: tenantId,
+    p_appointment_id: appointmentId,
+    p_status: status,
+    p_correlation_id: ctx.correlationId ?? null,
+    p_created_by: ctx.userId ?? null,
+  });
+  if (error) {
+    const mapped = mapDbError(error.message);
+    await logEvent(supabase, tenantId, "appt_reopen_error", "warn", `reopen falló: ${mapped}`, { appointment_id: appointmentId }, ctx);
+    return { ok: false, error: mapped };
+  }
+  const row = data as unknown as Appointment;
+  await logEvent(supabase, tenantId, "appt_reopen", "info", "turno reabierto", { appointment_id: row.id, status }, ctx);
+
+  // El evento anterior (si lo había) pudo haber sido borrado en Google al
+  // cancelar/marcar ausente; al reabrir se crea uno nuevo en vez de intentar
+  // actualizar un evento que ya no existe.
+  await supabase
+    .from("appointments")
+    .update({ gcal_event_id: null, sync_status: "disabled", sync_error: null, synced_at: null })
+    .eq("tenant_id", tenantId)
+    .eq("id", appointmentId);
+  await attemptGcalSync(supabase, tenantId, appointmentId, "create", ctx);
   return { ok: true, data: row };
 }
 
@@ -210,7 +251,7 @@ export async function cancelAppointment(
 
   await writeAudit(supabase, tenantId, appointmentId, "cancelled", old, row, ctx);
   await logEvent(supabase, tenantId, "appt_cancel", "info", "turno cancelado", { appointment_id: appointmentId }, ctx);
-  await maybeQueueGcal(supabase, tenantId, row as Appointment, "delete", ctx);
+  await attemptGcalSync(supabase, tenantId, appointmentId, "delete", ctx);
   return { ok: true, data: row as Appointment };
 }
 
@@ -283,16 +324,23 @@ export async function rescheduleAppointment(
   }
   const next = created as unknown as Appointment;
 
-  // Vincular trazabilidad y cerrar el anterior.
+  // Vincular trazabilidad y cerrar el anterior. Si el turno anterior ya tenía
+  // evento en Google, el nuevo turno "hereda" ese mismo gcal_event_id para que
+  // la sync lo actualice (mueva el evento) en vez de crear uno duplicado.
   await supabase
     .from("appointments")
-    .update({ rescheduled_from: p.appointmentId })
+    .update({
+      rescheduled_from: p.appointmentId,
+      gcal_event_id: old.gcal_event_id,
+      gcal_calendar_id: old.gcal_calendar_id,
+    })
     .eq("tenant_id", p.tenantId)
     .eq("id", next.id);
+  next.gcal_event_id = old.gcal_event_id;
 
   const { data: oldUpdated } = await supabase
     .from("appointments")
-    .update({ status: "rescheduled", hold_expires_at: null })
+    .update({ status: "rescheduled", hold_expires_at: null, gcal_event_id: null })
     .eq("tenant_id", p.tenantId)
     .eq("id", p.appointmentId)
     .select()
@@ -300,7 +348,7 @@ export async function rescheduleAppointment(
 
   await writeAudit(supabase, p.tenantId, p.appointmentId, "rescheduled", old, { ...old, status: "rescheduled", rescheduled_to: next.id }, ctx);
   await logEvent(supabase, p.tenantId, "appt_reschedule", "info", "turno reprogramado", { from: p.appointmentId, to: next.id }, ctx);
-  await maybeQueueGcal(supabase, p.tenantId, next, "update", ctx);
+  await attemptGcalSync(supabase, p.tenantId, next.id, "update", ctx);
 
   return {
     ok: true,
@@ -356,38 +404,3 @@ async function writeAudit(
   }
 }
 
-/**
- * Encola una operación de Google Calendar en el outbox SOLO si el tenant tiene
- * gcal_sync_enabled (off en Fase 1). Nunca bloquea el turno interno.
- */
-async function maybeQueueGcal(
-  supabase: DB,
-  tenantId: string,
-  appt: Appointment,
-  operation: "create" | "update" | "delete",
-  ctx: Ctx,
-) {
-  const { data: s } = await supabase
-    .from("appointment_settings")
-    .select("gcal_sync_enabled")
-    .eq("tenant_id", tenantId)
-    .maybeSingle();
-  if (!s?.gcal_sync_enabled) return; // Fase 1: no-op
-
-  try {
-    await supabase.from("gcal_sync_outbox").insert({
-      tenant_id: tenantId,
-      appointment_id: appt.id,
-      operation,
-      status: "pending",
-      correlation_id: ctx.correlationId ?? appt.correlation_id ?? null,
-    });
-    await supabase
-      .from("appointments")
-      .update({ sync_status: "pending" })
-      .eq("tenant_id", tenantId)
-      .eq("id", appt.id);
-  } catch {
-    /* el error de encolado no pierde el turno */
-  }
-}

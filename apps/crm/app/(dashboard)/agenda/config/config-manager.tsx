@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useFormState } from "react-dom";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
-import { ArrowLeft, Plus, Trash2, ChevronDown, ChevronRight } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, ChevronDown, ChevronRight, CalendarDays, Unplug } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type {
@@ -25,7 +25,11 @@ import {
   deleteSchedule,
   deleteSpecialty,
   deleteTreatment,
+  disconnectGoogleCalendar,
+  listGoogleCalendars,
   saveAppointmentSettings,
+  setGcalSyncEnabled,
+  setGoogleCalendarId,
   setProfessionalSpecialties,
   setProfessionalTreatments,
   upsertProfessional,
@@ -33,11 +37,24 @@ import {
   upsertTreatment,
   type ActionState,
 } from "../actions";
+import type { GcalCalendarOption } from "@/lib/appointments/gcal-client";
 
 type ProfTreatment = Tables<"professional_treatments">;
 type ProfSpecialty = Tables<"professional_specialties">;
+type GcalConnection = Pick<
+  Tables<"gcal_connections">,
+  "google_account_email" | "calendar_id" | "status" | "last_sync_at"
+>;
 
 const WEEKDAYS = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
+
+const GCAL_ERROR_MSG: Record<string, string> = {
+  estado_invalido: "La sesión de conexión venció o es inválida. Probá de nuevo.",
+  no_autorizado: "No autorizado para conectar Google Calendar en esta empresa.",
+  sin_refresh_token: "Google no devolvió permiso de acceso continuo. Reintentá la conexión.",
+  fallo_conexion: "No se pudo completar la conexión con Google. Reintentá en un momento.",
+  sin_tenant: "Entrá a una empresa antes de conectar Google Calendar.",
+};
 
 type Props = {
   tenantName: string;
@@ -49,9 +66,26 @@ type Props = {
   profSpecialties: ProfSpecialty[];
   schedules: ProfessionalSchedule[];
   exceptions: AvailabilityException[];
+  gcalConnection: GcalConnection | null;
 };
 
 export function ConfigManager(props: Props) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  useEffect(() => {
+    const connected = searchParams.get("gcal_connected");
+    const err = searchParams.get("gcal_error");
+    if (connected) {
+      toast.success("Google Calendar conectado");
+      router.replace("/agenda/config");
+    } else if (err) {
+      toast.error(GCAL_ERROR_MSG[err] ?? "No se pudo conectar con Google Calendar");
+      router.replace("/agenda/config");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
   return (
     <div className="mx-auto w-full max-w-4xl space-y-6">
       <div className="flex items-center gap-2">
@@ -67,7 +101,7 @@ export function ConfigManager(props: Props) {
       <SpecialtiesSection specialties={props.specialties} />
       <TreatmentsSection treatments={props.treatments} specialties={props.specialties} />
       <ProfessionalsSection {...props} />
-      <GcalSection enabled={props.settings?.gcal_sync_enabled ?? false} />
+      <GcalSection connection={props.gcalConnection} syncEnabled={props.settings?.gcal_sync_enabled ?? false} />
     </div>
   );
 }
@@ -507,17 +541,146 @@ function ProfessionalEditor({
   );
 }
 
-function GcalSection({ enabled }: { enabled: boolean }) {
+function GcalSection({
+  connection,
+  syncEnabled,
+}: {
+  connection: GcalConnection | null;
+  syncEnabled: boolean;
+}) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const connected = connection?.status === "connected";
+  const [calendars, setCalendars] = useState<GcalCalendarOption[] | null>(null);
+  const [loadingCalendars, setLoadingCalendars] = useState(false);
+
+  function toggleSync(next: boolean) {
+    startTransition(async () => {
+      const res = await setGcalSyncEnabled(next);
+      if (res.error) {
+        toast.error(res.error);
+        return;
+      }
+      toast.success(next ? "Sincronización activada" : "Sincronización desactivada");
+      router.refresh();
+    });
+  }
+
+  function disconnect() {
+    if (!confirm("¿Desconectar Google Calendar? Los turnos ya sincronizados no se borran de tu calendario.")) {
+      return;
+    }
+    startTransition(async () => {
+      const res = await disconnectGoogleCalendar();
+      if (res.error) {
+        toast.error(res.error);
+        return;
+      }
+      toast.success("Google Calendar desconectado");
+      router.refresh();
+    });
+  }
+
+  function loadCalendars() {
+    setLoadingCalendars(true);
+    startTransition(async () => {
+      const res = await listGoogleCalendars();
+      setLoadingCalendars(false);
+      if (!res.ok) {
+        toast.error("No se pudieron cargar los calendarios: " + res.error);
+        return;
+      }
+      setCalendars(res.data);
+    });
+  }
+
+  function chooseCalendar(calendarId: string) {
+    startTransition(async () => {
+      const res = await setGoogleCalendarId(calendarId);
+      if (res.error) {
+        toast.error(res.error);
+        return;
+      }
+      toast.success("Calendario actualizado");
+      setCalendars(null);
+      router.refresh();
+    });
+  }
+
   return (
-    <Card title="Google Calendar" desc="Sincronización con Google Calendar.">
-      <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-        <p className="font-medium text-foreground">Próximamente (Fase 2)</p>
-        <p className="mt-1">
-          La conexión OAuth por empresa y la sincronización de eventos están planificadas. El
-          esquema ya soporta el estado de sincronización por turno. Estado actual:{" "}
-          <span className={enabled ? "text-green-600" : ""}>{enabled ? "habilitado (sin conexión)" : "deshabilitado"}</span>.
-        </p>
-      </div>
+    <Card title="Google Calendar" desc="Sincroniza los turnos confirmados, cancelados y reprogramados con un calendario de Google.">
+      {!connected ? (
+        <div className="flex items-center justify-between gap-3 rounded-md border border-dashed p-4">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <CalendarDays className="h-4 w-4" />
+            {connection?.status === "error"
+              ? "La conexión falló o el permiso fue revocado. Reconectá para seguir sincronizando."
+              : "Sin conectar."}
+          </div>
+          <Button asChild size="sm">
+            <a href="/api/integrations/google/authorize">Conectar con Google</a>
+          </Button>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between gap-3 rounded-md border p-3 text-sm">
+            <div>
+              <p className="font-medium">{connection?.google_account_email ?? "Cuenta conectada"}</p>
+              <p className="text-xs text-muted-foreground">
+                Calendario: {connection?.calendar_id ?? "primary"}
+                {connection?.last_sync_at ? ` · última sync: ${new Date(connection.last_sync_at).toLocaleString("es-AR")}` : ""}
+              </p>
+            </div>
+            <Button variant="outline" size="sm" onClick={disconnect} disabled={pending}>
+              <Unplug className="h-4 w-4" /> Desconectar
+            </Button>
+          </div>
+
+          <div className="rounded-md border p-3">
+            {calendars === null ? (
+              <Button variant="outline" size="sm" onClick={loadCalendars} disabled={loadingCalendars}>
+                {loadingCalendars ? "Buscando calendarios…" : "Cambiar calendario"}
+              </Button>
+            ) : (
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-muted-foreground">
+                  Elegí en qué calendario se crean los turnos:
+                </p>
+                <select
+                  className="h-10 w-full rounded-md border bg-background px-2 text-sm"
+                  defaultValue={connection?.calendar_id ?? ""}
+                  disabled={pending}
+                  onChange={(e) => chooseCalendar(e.target.value)}
+                >
+                  <option value="" disabled>
+                    Seleccioná un calendario…
+                  </option>
+                  {calendars.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.summary}
+                      {c.primary ? " (principal)" : ""}
+                    </option>
+                  ))}
+                </select>
+                <Button variant="ghost" size="sm" onClick={() => setCalendars(null)} disabled={pending}>
+                  Cancelar
+                </Button>
+              </div>
+            )}
+          </div>
+
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={syncEnabled}
+              disabled={pending}
+              onChange={(e) => toggleSync(e.target.checked)}
+              className="h-4 w-4"
+            />
+            Sincronizar turnos automáticamente (al confirmar, cancelar o reprogramar)
+          </label>
+        </div>
+      )}
     </Card>
   );
 }

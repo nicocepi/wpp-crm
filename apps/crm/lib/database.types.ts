@@ -873,6 +873,16 @@ export type Database = {
         }
         Returns: Database["public"]["Tables"]["appointments"]["Row"]
       }
+      reopen_appointment: {
+        Args: {
+          p_tenant_id: string
+          p_appointment_id: string
+          p_status?: string
+          p_correlation_id?: string | null
+          p_created_by?: string | null
+        }
+        Returns: Database["public"]["Tables"]["appointments"]["Row"]
+      }
       expire_appointment_holds: {
         Args: Record<PropertyKey, never>
         Returns: number

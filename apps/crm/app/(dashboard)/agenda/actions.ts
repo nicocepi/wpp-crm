@@ -8,8 +8,12 @@ import {
   cancelAppointment,
   confirmAppointment,
   holdSlot,
+  reopenAppointment,
   rescheduleAppointment,
 } from "@/lib/appointments/service";
+import { attemptGcalSync, getAvailableCalendars } from "@/lib/appointments/gcal-sync";
+import { revokeGoogleToken, type GcalCalendarOption } from "@/lib/appointments/gcal-client";
+import { decryptToken } from "@/lib/appointments/gcal-crypto";
 import type { AppointmentStatus } from "@/lib/types";
 
 export type ActionState = { ok?: boolean; error?: string; id?: string };
@@ -379,6 +383,26 @@ export async function setAppointmentStatus(
   const supabase = await createClient();
   const { data: old } = await supabase.from("appointments").select("*").eq("tenant_id", c.tenantId).eq("id", id).maybeSingle();
   if (!old) return { error: "Turno no encontrado" };
+
+  // Transiciones que VUELVEN a un estado que consume cupo (pending/confirmed)
+  // desde uno que no lo consumía (completed/no_show/cancelled/rescheduled, o
+  // un held ya vencido) deben re-validar cupo en la misma transacción: mientras
+  // estuvo liberado, otro turno pudo haber ocupado esa franja.
+  if (status === "confirmed" || status === "pending") {
+    if (old.status === "held") {
+      const res = await confirmAppointment(supabase, c.tenantId, id, { source: "crm", userId: c.userId });
+      if (!res.ok) return { error: res.error };
+      revalidate();
+      return { ok: true };
+    }
+    if (old.status !== "pending" && old.status !== "confirmed") {
+      const res = await reopenAppointment(supabase, c.tenantId, id, status, { source: "crm", userId: c.userId });
+      if (!res.ok) return { error: res.error };
+      revalidate();
+      return { ok: true };
+    }
+  }
+
   const { data: row, error } = await supabase
     .from("appointments")
     .update({ status })
@@ -452,10 +476,124 @@ export async function retrySync(id: string): Promise<ActionState> {
   if (!c.ok) return { error: c.error };
   const supabase = await createClient();
   const { data: s } = await supabase.from("appointment_settings").select("gcal_sync_enabled").eq("tenant_id", c.tenantId).maybeSingle();
-  if (!s?.gcal_sync_enabled) return { error: "Google Calendar no está habilitado (Fase 2)" };
-  const { error } = await supabase.from("appointments").update({ sync_status: "pending", sync_error: null }).eq("tenant_id", c.tenantId).eq("id", id);
+  if (!s?.gcal_sync_enabled) return { error: "Google Calendar no está habilitado para esta empresa" };
+
+  const { data: appt } = await supabase
+    .from("appointments")
+    .select("status, gcal_event_id")
+    .eq("tenant_id", c.tenantId)
+    .eq("id", id)
+    .maybeSingle();
+  if (!appt) return { error: "Turno no encontrado" };
+
+  const operation: "create" | "update" | "delete" = ["cancelled", "no_show", "rescheduled"].includes(
+    appt.status,
+  )
+    ? "delete"
+    : appt.gcal_event_id
+      ? "update"
+      : "create";
+
+  const res = await attemptGcalSync(supabase, c.tenantId, id, operation, { source: "crm", userId: c.userId });
+  if (!res.ok) return { error: res.error ?? "No se pudo sincronizar con Google Calendar" };
+  revalidate();
+  return { ok: true };
+}
+
+// ===========================================================================
+// Google Calendar: conexión y toggle de sync
+// ===========================================================================
+export async function setGcalSyncEnabled(enabled: boolean): Promise<ActionState> {
+  const c = await ctx();
+  if (!c.ok) return { error: c.error };
+  const supabase = await createClient();
+
+  if (enabled) {
+    const { data: conn } = await supabase
+      .from("gcal_connections")
+      .select("status")
+      .eq("tenant_id", c.tenantId)
+      .maybeSingle();
+    if (!conn || conn.status !== "connected") {
+      return { error: "Conectá Google Calendar antes de activar la sincronización" };
+    }
+  }
+
+  const { error } = await supabase
+    .from("appointment_settings")
+    .upsert({ tenant_id: c.tenantId, gcal_sync_enabled: enabled }, { onConflict: "tenant_id" });
   if (error) return { error: error.message };
-  await supabase.from("gcal_sync_outbox").insert({ tenant_id: c.tenantId, appointment_id: id, operation: "update", status: "pending" });
+  revalidate();
+  return { ok: true };
+}
+
+/** Desconecta Google Calendar: revoca el token (best-effort) y limpia la conexión. */
+export async function disconnectGoogleCalendar(): Promise<ActionState> {
+  const c = await ctx();
+  if (!c.ok) return { error: c.error };
+  const supabase = await createClient();
+
+  const { data: conn } = await supabase
+    .from("gcal_connections")
+    .select("refresh_token_encrypted")
+    .eq("tenant_id", c.tenantId)
+    .maybeSingle();
+  if (conn?.refresh_token_encrypted) {
+    try {
+      await revokeGoogleToken(decryptToken(conn.refresh_token_encrypted));
+    } catch {
+      /* best-effort: si falla la revocación remota, igual desconectamos localmente */
+    }
+  }
+
+  await supabase
+    .from("gcal_connections")
+    .update({
+      status: "disconnected",
+      access_token_encrypted: null,
+      refresh_token_encrypted: null,
+      token_expires_at: null,
+    })
+    .eq("tenant_id", c.tenantId);
+  await supabase
+    .from("appointment_settings")
+    .update({ gcal_sync_enabled: false })
+    .eq("tenant_id", c.tenantId);
+
+  revalidate();
+  return { ok: true };
+}
+
+export type ListCalendarsResult =
+  | { ok: true; data: GcalCalendarOption[] }
+  | { ok: false; error: string };
+
+/** Lista los calendarios (con permiso de escritura) de la cuenta conectada. */
+export async function listGoogleCalendars(): Promise<ListCalendarsResult> {
+  const c = await ctx();
+  if (!c.ok) return { ok: false, error: c.error };
+  const supabase = await createClient();
+  return getAvailableCalendars(supabase, c.tenantId);
+}
+
+/** Cambia el calendario de Google donde se sincronizan los turnos. */
+export async function setGoogleCalendarId(calendarId: string): Promise<ActionState> {
+  const c = await ctx();
+  if (!c.ok) return { error: c.error };
+  if (!calendarId.trim()) return { error: "Elegí un calendario" };
+  const supabase = await createClient();
+  const { data: conn } = await supabase
+    .from("gcal_connections")
+    .select("status")
+    .eq("tenant_id", c.tenantId)
+    .maybeSingle();
+  if (!conn || conn.status !== "connected") return { error: "Conectá Google Calendar primero" };
+
+  const { error } = await supabase
+    .from("gcal_connections")
+    .update({ calendar_id: calendarId })
+    .eq("tenant_id", c.tenantId);
+  if (error) return { error: error.message };
   revalidate();
   return { ok: true };
 }

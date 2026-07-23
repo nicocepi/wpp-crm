@@ -135,4 +135,36 @@ suite("book_appointment — concurrencia e idempotencia", () => {
     const r3 = await book();
     expect(r3.error).toBeNull();
   });
+
+  it("reopen_appointment re-valida cupo: no permite reabrir si otro turno ya ocupó la franja", async () => {
+    await db.from("appointments").delete().eq("tenant_id", tenantId);
+    const r1 = await book(); // confirmed, ocupa el único cupo
+    expect(r1.error).toBeNull();
+    const id1 = (r1.data as { id: string }).id;
+
+    // Se marca no_show -> libera el cupo (no_show no consume).
+    await db.from("appointments").update({ status: "no_show" }).eq("id", id1);
+
+    // Otro turno toma esa misma franja (cupo 1).
+    const r2 = await book();
+    expect(r2.error).toBeNull();
+
+    // Reabrir el primero a confirmed debe fallar: la franja ya está ocupada.
+    const reopen = await db.rpc("reopen_appointment", {
+      p_tenant_id: tenantId,
+      p_appointment_id: id1,
+      p_status: "confirmed",
+    });
+    expect(reopen.error?.message).toContain("slot_full");
+
+    // Si el segundo se cancela, ahora sí se puede reabrir el primero.
+    await db.from("appointments").update({ status: "cancelled" }).eq("id", (r2.data as { id: string }).id);
+    const reopenOk = await db.rpc("reopen_appointment", {
+      p_tenant_id: tenantId,
+      p_appointment_id: id1,
+      p_status: "confirmed",
+    });
+    expect(reopenOk.error).toBeNull();
+    expect((reopenOk.data as { status: string }).status).toBe("confirmed");
+  });
 });

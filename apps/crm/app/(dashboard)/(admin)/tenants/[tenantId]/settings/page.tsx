@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { BotConfigForm } from "@/components/settings/bot-config-form";
 import { Button } from "@/components/ui/button";
 import { LogoUploader } from "./logo-uploader";
+import { AppointmentsToggle } from "./appointments-toggle";
 import type { BotConfig } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -24,11 +25,10 @@ export default async function TenantSettingsPage({
 
   if (!tenant) notFound();
 
-  const { data: config } = await supabase
-    .from("bot_configs")
-    .select("*")
-    .eq("tenant_id", tenant.id)
-    .maybeSingle();
+  const [{ data: config }, { data: apptSettings }] = await Promise.all([
+    supabase.from("bot_configs").select("*").eq("tenant_id", tenant.id).maybeSingle(),
+    supabase.from("appointment_settings").select("enabled").eq("tenant_id", tenant.id).maybeSingle(),
+  ]);
 
   return (
     <div className="mx-auto max-w-2xl p-6">
@@ -44,6 +44,10 @@ export default async function TenantSettingsPage({
 
       <div className="mb-6 rounded-lg border p-4">
         <LogoUploader tenantId={tenant.id} logoUrl={tenant.logo_url} />
+      </div>
+
+      <div className="mb-6">
+        <AppointmentsToggle tenantId={tenant.id} enabled={apptSettings?.enabled ?? false} />
       </div>
 
       <BotConfigForm
