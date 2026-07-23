@@ -1061,8 +1061,11 @@ function todayAR(){ return new Intl.DateTimeFormat('en-CA', { timeZone: 'America
 function addDays(ymd, n){ const a = ymd.split('-').map(Number); const dt = new Date(Date.UTC(a[0], a[1]-1, a[2], 12)); dt.setUTCDate(dt.getUTCDate()+n); return dt.getUTCFullYear()+'-'+String(dt.getUTCMonth()+1).padStart(2,'0')+'-'+String(dt.getUTCDate()).padStart(2,'0'); }
 function fmt(iso, tz){ try { return new Intl.DateTimeFormat('es-AR', { timeZone: tz || 'America/Argentina/Buenos_Aires', weekday:'short', day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }).format(new Date(iso)); } catch(e){ return iso; } }
 function numIn(t){ const m = t.match(/\\d+/); return m ? parseInt(m[0],10) : null; }
+// UUID v4 real (las columnas correlation_id son tipo uuid en Postgres; un id
+// no-UUID hace fallar el RPC de book_appointment con "invalid input syntax").
+function uuidv4(){ return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c){ const r = Math.random()*16|0; const v = c === 'x' ? r : (r&0x3|0x8); return v.toString(16); }); }
 
-const CID = state.appt_correlation_id || (Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,10));
+const CID = state.appt_correlation_id || uuidv4();
 const step = state.appt_step || null;
 const wantsBook = /(turno|turnos|agendar|reservar|cita|sacar)/.test(low) && !/cancel|reprogram/.test(low);
 const wantsCancel = /cancel/.test(low);

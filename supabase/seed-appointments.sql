@@ -12,6 +12,15 @@ insert into public.tenants (id, name, whatsapp_phone_id)
 values ('00000000-0000-0000-0000-0000000000a2', 'Centro Odontológico Demo', 'DEMO_ODONTO_PHONE_ID')
 on conflict (id) do nothing;
 
+-- ---- bot_configs: requerido para que n8n procese mensajes de este tenant ---
+-- (el flujo de WhatsApp corta en "Get bot_config" si no hay fila; flow_type
+-- 'menu' no importa para el sub-flujo de turnos, que corre antes del ruteo).
+insert into public.bot_configs (tenant_id, enabled, system_prompt, reply_delay_seconds, flow_type)
+values (
+  '00000000-0000-0000-0000-0000000000a2', true,
+  'Asistente del Centro Odontológico Demo.', 1, 'menu'
+) on conflict (tenant_id) do nothing;
+
 -- ---- Configuración del módulo (habilitado) ---------------------------------
 insert into public.appointment_settings (
   tenant_id, enabled, timezone, slot_minutes, appointment_minutes,
