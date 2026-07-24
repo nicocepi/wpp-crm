@@ -27,6 +27,7 @@ export type Database = {
           min_lead_minutes: number
           msg_cancel_template: string | null
           msg_confirm_template: string | null
+          msg_welcome_menu: string | null
           reschedule_policy: string | null
           slot_minutes: number
           tenant_id: string
@@ -46,6 +47,7 @@ export type Database = {
           min_lead_minutes?: number
           msg_cancel_template?: string | null
           msg_confirm_template?: string | null
+          msg_welcome_menu?: string | null
           reschedule_policy?: string | null
           slot_minutes?: number
           tenant_id: string
@@ -65,6 +67,7 @@ export type Database = {
           min_lead_minutes?: number
           msg_cancel_template?: string | null
           msg_confirm_template?: string | null
+          msg_welcome_menu?: string | null
           reschedule_policy?: string | null
           slot_minutes?: number
           tenant_id?: string

@@ -38,6 +38,7 @@ import {
   type ActionState,
 } from "../actions";
 import type { GcalCalendarOption } from "@/lib/appointments/gcal-client";
+import { DEFAULT_WELCOME_MENU } from "@/lib/appointments/messages";
 
 type ProfTreatment = Tables<"professional_treatments">;
 type ProfSpecialty = Tables<"professional_specialties">;
@@ -160,6 +161,18 @@ function SettingsSection({ settings }: { settings: AppointmentSettings | null })
           <Check name="auto_assign_professional" label="Asignar automáticamente cualquier profesional disponible" def={settings?.auto_assign_professional ?? false} />
           <Check name="allow_multiple_per_conversation" label="Permitir varios turnos por conversación" def={settings?.allow_multiple_per_conversation ?? false} />
         </div>
+        <Field label="Menú inicial de WhatsApp (primer mensaje o tras 8hs sin escribir)">
+          <textarea
+            name="msg_welcome_menu"
+            defaultValue={settings?.msg_welcome_menu ?? ""}
+            className="min-h-[110px] w-full rounded-md border bg-background p-2 text-sm font-mono"
+            placeholder={DEFAULT_WELCOME_MENU}
+          />
+        </Field>
+        <p className="-mt-2 text-[11px] text-muted-foreground">
+          Las opciones se identifican por número (1 a 5); si cambiás el texto mantené los 5 números
+          en el mismo orden (turno, reagendar, cancelar, consultar, hablar con operador).
+        </p>
         <div className="flex gap-2">
           <Field label="Política de cancelación">
             <textarea name="cancellation_policy" defaultValue={settings?.cancellation_policy ?? ""} className="min-h-[50px] w-full rounded-md border bg-background p-2 text-sm" />

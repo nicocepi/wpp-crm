@@ -68,6 +68,7 @@ export async function saveAppointmentSettings(
       reschedule_policy: String(formData.get("reschedule_policy") ?? "").trim() || null,
       msg_confirm_template: String(formData.get("msg_confirm_template") ?? "").trim() || null,
       msg_cancel_template: String(formData.get("msg_cancel_template") ?? "").trim() || null,
+      msg_welcome_menu: String(formData.get("msg_welcome_menu") ?? "").trim() || null,
     },
     { onConflict: "tenant_id" },
   );

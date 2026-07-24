@@ -12,6 +12,15 @@ insert into public.tenants (id, name, whatsapp_phone_id)
 values ('00000000-0000-0000-0000-0000000000a2', 'Centro Odontológico Demo', 'DEMO_ODONTO_PHONE_ID')
 on conflict (id) do nothing;
 
+-- ---- Labels usadas por el handoff (opción 5 "hablar con un operador") -----
+-- "Get attention label"/"Get urgent label" en n8n solo LEEN por nombre, nunca
+-- crean; si no existen, la búsqueda devuelve [] y la cadena de aplicación de
+-- label corta ahí sin error visible (mismo patrón que la fila de bot_configs).
+insert into public.labels (tenant_id, name, color) values
+  ('00000000-0000-0000-0000-0000000000a2', 'Necesita agente', '#f59e0b'),
+  ('00000000-0000-0000-0000-0000000000a2', 'Urgente', '#ef4444')
+on conflict do nothing;
+
 -- ---- bot_configs: requerido para que n8n procese mensajes de este tenant ---
 -- (el flujo de WhatsApp corta en "Get bot_config" si no hay fila; flow_type
 -- 'menu' no importa para el sub-flujo de turnos, que corre antes del ruteo).

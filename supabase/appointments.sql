@@ -35,8 +35,12 @@ create table if not exists public.appointment_settings (
   reschedule_policy text,
   msg_confirm_template text,                                    -- plantilla de confirmación (opcional)
   msg_cancel_template text,                                     -- plantilla de cancelación (opcional)
+  msg_welcome_menu text,                                        -- menú inicial de WhatsApp (opcional, ver default en código)
   created_at timestamptz default now()
 );
+
+-- Agrega la columna si la tabla ya existía de una corrida previa de este archivo.
+alter table public.appointment_settings add column if not exists msg_welcome_menu text;
 
 -- ---------------------------------------------------------------------------
 -- specialties (especialidades: odontología general, ortodoncia, etc.)
