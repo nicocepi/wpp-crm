@@ -1075,6 +1075,10 @@ function todayAR(){ return new Intl.DateTimeFormat('en-CA', { timeZone: 'America
 function addDays(ymd, n){ const a = ymd.split('-').map(Number); const dt = new Date(Date.UTC(a[0], a[1]-1, a[2], 12)); dt.setUTCDate(dt.getUTCDate()+n); return dt.getUTCFullYear()+'-'+String(dt.getUTCMonth()+1).padStart(2,'0')+'-'+String(dt.getUTCDate()).padStart(2,'0'); }
 function fmt(iso, tz){ try { return new Intl.DateTimeFormat('es-AR', { timeZone: tz || 'America/Argentina/Buenos_Aires', weekday:'short', day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }).format(new Date(iso)); } catch(e){ return iso; } }
 function numIn(t){ const m = t.match(/\\d+/); return m ? parseInt(m[0],10) : null; }
+// Para el menú inicial: exige que el mensaje sea (aprox.) solo el número, no
+// cualquier dígito dentro de una frase larga (ej. "quiero 2 turnos" no debe
+// interpretarse como elegir la opción 2).
+function strictNumIn(t){ const m = t.trim().match(/^(\\d+)[.)]?$/); return m ? parseInt(m[1],10) : null; }
 // UUID v4 real (las columnas correlation_id son tipo uuid en Postgres; un id
 // no-UUID hace fallar el RPC de book_appointment con "invalid input syntax").
 function uuidv4(){ return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c){ const r = Math.random()*16|0; const v = c === 'x' ? r : (r&0x3|0x8); return v.toString(16); }); }
@@ -1117,7 +1121,7 @@ if (!step){
 }
 
 if (step === 'main_menu'){
-  const n = numIn(text);
+  const n = strictNumIn(text);
   if (n === 1){
     let cat;
     try { cat = await api('catalog', { tenant_id, kind: 'treatments' }); } catch(e){ return notHandled(); }
