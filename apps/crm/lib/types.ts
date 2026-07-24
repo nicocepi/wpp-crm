@@ -6,6 +6,35 @@ export type Message = Tables<"messages">;
 export type BotConfig = Tables<"bot_configs">;
 export type Tenant = Tables<"tenants">;
 
+// --- Módulo de turnos ---
+export type AppointmentSettings = Tables<"appointment_settings">;
+export type Specialty = Tables<"specialties">;
+export type Treatment = Tables<"treatments">;
+export type Professional = Tables<"professionals">;
+export type ProfessionalSchedule = Tables<"professional_schedules">;
+export type AvailabilityException = Tables<"availability_exceptions">;
+export type Appointment = Tables<"appointments">;
+export type AppointmentAudit = Tables<"appointment_audit">;
+
+/** Estados de un turno (usar estas constantes, no strings sueltos). */
+export const APPOINTMENT_STATUSES = [
+  "held",
+  "pending",
+  "confirmed",
+  "cancelled",
+  "completed",
+  "no_show",
+  "rescheduled",
+] as const;
+export type AppointmentStatus = (typeof APPOINTMENT_STATUSES)[number];
+
+/** Estados que consumen cupo (deben coincidir con book_appointment en SQL). */
+export const CUPO_CONSUMING_STATUSES: AppointmentStatus[] = [
+  "held",
+  "pending",
+  "confirmed",
+];
+
 /** Contacto con sus labels resueltas (join contact_labels -> labels). */
 export type ContactWithLabels = Contact & {
   labels: Label[];
@@ -24,6 +53,16 @@ export type FlowState = {
   awaiting_query?: boolean;
   path?: string[];
   urgent?: boolean;
+  // --- Sub-flujo de agendamiento de turnos (reusa el mismo estado por-contacto) ---
+  appt_step?: string | null;            // paso actual del flujo de turno
+  appt_specialty_id?: string | null;
+  appt_treatment_id?: string | null;
+  appt_professional_id?: string | null; // null = asignación automática
+  appt_date?: string | null;            // "YYYY-MM-DD" preferida
+  appt_slot_options?: string[];         // ids de slot ofrecidos en el último mensaje
+  appt_hold_id?: string | null;         // turno en estado held pendiente de confirmar
+  appt_correlation_id?: string | null;  // trazabilidad punta a punta
+  appt_flow_expires_at?: string | null; // vencimiento del sub-flujo
 };
 
 /** Lee flow_state de forma segura (el campo es jsonb / Json). */

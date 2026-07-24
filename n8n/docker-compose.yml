@@ -68,6 +68,9 @@ services:
       # Alerta de handoff: n8n postea al CRM (host) al vencer el delay.
       CRM_BASE_URL: ${CRM_BASE_URL:-http://host.docker.internal:3000}
       HANDOFF_ALERT_SECRET: ${HANDOFF_ALERT_SECRET}
+      # Sub-flujo de turnos: endpoints internos de disponibilidad/hold/confirm/etc.
+      CRM_INTERNAL_URL: ${CRM_INTERNAL_URL:-http://host.docker.internal:3000}
+      APPOINTMENTS_INTERNAL_SECRET: ${APPOINTMENTS_INTERNAL_SECRET}
     volumes:
       - n8n_data:/home/node/.n8n
 

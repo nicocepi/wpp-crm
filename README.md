@@ -364,6 +364,55 @@ y HTTP plano con el VPS — no hace falta certificado en el VPS).
 > el tramo Cloudflare↔VPS); rotar las credenciales de negocio (Supabase, Meta,
 > Anthropic, SMTP) — los secretos *internos* (n8n) ya se rotaron al desplegar.
 
+## Módulo de turnos (local)
+
+Agendamiento de turnos por WhatsApp + panel. Arquitectura y detalle: [`docs/appointments.md`](docs/appointments.md).
+
+**Migración y datos demo** (SQL Editor de Supabase, en orden):
+1. Correr `supabase/appointments.sql` (paso 16 de [MIGRATIONS.md](supabase/MIGRATIONS.md)).
+2. (Opcional, no-prod) Correr `supabase/seed-appointments.sql` → crea "Centro Odontológico Demo"
+   con especialidades, tratamientos, profesionales, horarios y excepciones.
+3. Regenerar los tipos si cambiaste el esquema: se mantienen a mano en `apps/crm/lib/database.types.ts`.
+
+**Variables nuevas** (ver `.env.example`, en `apps/crm/.env.local`):
+- `APPOINTMENTS_INTERNAL_SECRET`, `CRM_INTERNAL_URL` — n8n las usa para llamar a los endpoints internos.
+- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_OAUTH_REDIRECT_URI`, `GCAL_TOKEN_ENCRYPTION_KEY`
+  — conexión con Google Calendar. Paso a paso para crear las credenciales en
+  [`docs/appointments.md`](docs/appointments.md#crear-las-credenciales-de-google-paso-a-paso).
+
+**Levantar y probar**:
+```bash
+pnpm dev:crm                 # panel en :3000
+node n8n/build-workflow.mjs  # regenera el workflow; re-importar en n8n
+```
+- **Panel**: entrá como un usuario del tenant demo (o impersonando desde admin). Con el módulo
+  habilitado aparece **Turnos** en el menú. Desde ahí: agenda diaria, alta manual, confirmar,
+  cancelar, reprogramar, completar/ausente, notas; y **Configuración** para especialidades,
+  tratamientos, profesionales, horarios y excepciones.
+- **WhatsApp (flujo)**: importar el workflow regenerado en n8n y escribir "quiero un turno".
+  El bot ofrece tratamiento → profesional → horarios reales → retención → confirmación.
+  También "cancelar mi turno" / "reprogramar" / "mis turnos".
+
+**Tests**:
+```bash
+pnpm --filter crm test       # unitarios del motor de disponibilidad (sin DB)
+# Integración de concurrencia (contra Supabase local):
+SUPABASE_TEST_URL=http://127.0.0.1:54321 \
+SUPABASE_TEST_SERVICE_ROLE_KEY=<service_role local> \
+  pnpm --filter crm test
+```
+
+**Google Calendar**: en `/agenda/config` → sección Google Calendar → "Conectar con Google" (redirige
+al consentimiento de Google y vuelve). Una vez conectado, activá "Sincronizar turnos automáticamente".
+Los turnos confirmados/cancelados/reprogramados se sincronizan al momento; si falla, el turno queda
+`sync_status='failed'` (visible en la agenda) y el botón **"Reintentar sync"** reintenta a demanda.
+**Simular un error de sync**: desconectá Google Calendar (o revocá el acceso desde
+[myaccount.google.com/permissions](https://myaccount.google.com/permissions)) y confirmá/cancelá un
+turno con `gcal_sync_enabled` todavía activo — no debería perder el turno, solo marcar el sync como
+fallido. **Desconectar**: botón "Desconectar" en la misma sección.
+
+**Limpiar la data demo**: bloque "LIMPIEZA" comentado al final de `supabase/seed-appointments.sql`.
+
 ## Referencia rápida
 
 | Servicio | Local | Producción |

@@ -1,5 +1,6 @@
 import { MessageCircle, LogOut, Eye } from "lucide-react";
 import { getCurrentProfile } from "@/lib/tenant";
+import { createClient } from "@/lib/supabase/server";
 import { SidebarNav, type NavItem } from "@/components/sidebar-nav";
 import { Button } from "@/components/ui/button";
 import { signOut, stopImpersonating } from "./actions";
@@ -9,6 +10,8 @@ const MEMBER_NAV: NavItem[] = [
   { href: "/metrics", label: "Métricas", icon: "stats" },
   { href: "/faq", label: "Preguntas frecuentes", icon: "help" },
 ];
+// Ítem de agenda: solo si el tenant tiene el módulo de turnos habilitado.
+const AGENDA_NAV: NavItem = { href: "/agenda", label: "Turnos", icon: "agenda" };
 const ADMIN_NAV: NavItem[] = [
   { href: "/tenants", label: "Tenants", icon: "tenants" },
   { href: "/stats", label: "Estadisticas", icon: "stats" },
@@ -48,6 +51,18 @@ export default async function DashboardLayout({
   // Logo del cliente (solo en la vista member / impersonacion).
   const logo = memberView ? tenant?.logo_url ?? null : null;
 
+  // Vista member: sumar "Turnos" si el tenant tiene el módulo habilitado.
+  const memberNav: NavItem[] = [...MEMBER_NAV];
+  if (memberView && tenant) {
+    const supabase = await createClient();
+    const { data: apptCfg } = await supabase
+      .from("appointment_settings")
+      .select("enabled")
+      .eq("tenant_id", tenant.id)
+      .maybeSingle();
+    if (apptCfg?.enabled) memberNav.splice(1, 0, AGENDA_NAV);
+  }
+
   return (
     <div className="flex min-h-screen">
       <aside className="hidden w-60 shrink-0 flex-col border-r bg-background md:flex">
@@ -76,7 +91,7 @@ export default async function DashboardLayout({
             <p className="text-xs text-muted-foreground">WhatsApp CRM</p>
           </div>
         </div>
-        <SidebarNav items={memberView ? MEMBER_NAV : ADMIN_NAV} />
+        <SidebarNav items={memberView ? memberNav : ADMIN_NAV} />
         <div className="mt-auto border-t p-2">
           <form action={signOut}>
             <Button

@@ -1021,12 +1021,460 @@ const logFlowAi = push(
 );
 logFlowAi.position = [3640, -40];
 
+// ===== Sub-flujo de TURNOS (agendamiento por WhatsApp) =====================
+// Máquina de estados determinística. NO inventa horarios: consulta los
+// endpoints internos del CRM (que calculan disponibilidad y crean/cancelan/
+// reprograman turnos con chequeo de cupo e idempotencia). El estado del
+// sub-flujo vive en contacts.flow_state (appt_*), reusando el estado existente.
+// Requiere env: CRM_INTERNAL_URL, APPOINTMENTS_INTERNAL_SECRET.
+const yT = 1500;
+
+const apptEngine = push(
+  code(
+    "Appt engine",
+    `const base = ($env.CRM_INTERNAL_URL || '').replace(/\\/+$/, '');
+const secret = $env.APPOINTMENTS_INTERNAL_SECRET || '';
+const helpers = this.helpers;
+const c = $('contact_id').first().json;
+const tenant_id = c.tenant_id;
+const contact_id = c.contact_id;
+const phone = c.from;
+const text = (c.text || '').toString().trim();
+const low = text.toLowerCase();
+const nowIso = c.timestamp || new Date().toISOString();
+const reply_delay_seconds = 1;
+const EIGHT_HOURS_MS = 8 * 60 * 60 * 1000;
+
+const st0_raw = (c.flow_state && typeof c.flow_state === 'object') ? c.flow_state : {};
+// Pérdida de memoria a las 8hs: si pasó más de ese tiempo desde la última
+// interacción del sub-flujo de turnos, se ignora en qué paso había quedado y
+// se arranca de cero (vuelve a mostrar el menú inicial). No afecta al modo
+// IA/menú general del bot, que tiene su propio manejo de estado.
+const lastSeenIso = st0_raw.appt_last_seen_at || null;
+const sessionExpired = !lastSeenIso || (new Date(nowIso).getTime() - new Date(lastSeenIso).getTime()) > EIGHT_HOURS_MS;
+const st0 = sessionExpired ? {} : st0_raw;
+const state = Object.assign({}, st0);
+
+function out(handled, reply, newState, opts){
+  opts = opts || {};
+  const stamped = Object.assign({}, (newState || st0), { appt_last_seen_at: nowIso });
+  const patch_body = Object.assign({ flow_state: stamped }, opts.patch || {});
+  const json = Object.assign({ handled: !!handled, should_send: !!(handled && reply), reply: reply || '', reply_delay_seconds, patch_body: patch_body }, opts.extra || {});
+  return [{ json: json }];
+}
+function notHandled(){ return out(false, '', st0); }
+function st0Clear(){ const s = Object.assign({}, st0); ['appt_step','appt_treatment_id','appt_professional_id','appt_offered','appt_slot_cursor','appt_hold_id','appt_hold_label','appt_mode','appt_resch_id','appt_options','appt_topts','appt_popts','appt_topts_resch'].forEach(function(k){ delete s[k]; }); s.appt_correlation_id = null; return s; }
+
+if (c.handoff === true) return notHandled();
+if (!base || !secret) return notHandled();
+
+async function api(path, body){
+  return await helpers.httpRequest({ method: 'POST', url: base + '/api/internal/appointments/' + path, headers: { 'x-appointment-secret': secret, 'Content-Type': 'application/json' }, body: body, json: true });
+}
+function todayAR(){ return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date()); }
+function addDays(ymd, n){ const a = ymd.split('-').map(Number); const dt = new Date(Date.UTC(a[0], a[1]-1, a[2], 12)); dt.setUTCDate(dt.getUTCDate()+n); return dt.getUTCFullYear()+'-'+String(dt.getUTCMonth()+1).padStart(2,'0')+'-'+String(dt.getUTCDate()).padStart(2,'0'); }
+function fmt(iso, tz){ try { return new Intl.DateTimeFormat('es-AR', { timeZone: tz || 'America/Argentina/Buenos_Aires', weekday:'short', day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }).format(new Date(iso)); } catch(e){ return iso; } }
+function numIn(t){ const m = t.match(/\\d+/); return m ? parseInt(m[0],10) : null; }
+// Para el menú inicial: exige que el mensaje sea (aprox.) solo el número, no
+// cualquier dígito dentro de una frase larga (ej. "quiero 2 turnos" no debe
+// interpretarse como elegir la opción 2).
+function strictNumIn(t){ const m = t.trim().match(/^(\\d+)[.)]?$/); return m ? parseInt(m[1],10) : null; }
+// UUID v4 real (las columnas correlation_id son tipo uuid en Postgres; un id
+// no-UUID hace fallar el RPC de book_appointment con "invalid input syntax").
+function uuidv4(){ return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c){ const r = Math.random()*16|0; const v = c === 'x' ? r : (r&0x3|0x8); return v.toString(16); }); }
+
+const CID = state.appt_correlation_id || uuidv4();
+const step = state.appt_step || null;
+
+async function listUpcoming(){
+  try { return await api('upcoming', { tenant_id, contact_id }); } catch(e){ return null; }
+}
+
+async function showAvailability(ns, cursor){
+  const from = addDays(todayAR(), 0);
+  const to = addDays(todayAR(), 21);
+  let res;
+  try { res = await api('availability', { tenant_id, treatment_id: ns.appt_treatment_id, professional_id: ns.appt_professional_id || null, from: from, to: to }); }
+  catch(e){ return out(true, 'No pude consultar la disponibilidad ahora. Probá de nuevo en un rato.', ns); }
+  const slots = (res && res.slots) || [];
+  const tz = (res && res.timezone) || 'America/Argentina/Buenos_Aires';
+  const start = cursor || 0;
+  const page = slots.slice(start, start+6);
+  if (page.length === 0){
+    if (start > 0) return out(true, 'No hay más horarios. Respondé con el número de uno anterior o escribí "cancelar".', Object.assign({}, ns, { appt_step:'choose_slot' }));
+    return out(true, 'No encontré horarios disponibles en los próximos días. Escribí "cancelar" para salir.', st0Clear());
+  }
+  const offered = page.map(function(s){ return { p: s.professionalId, s: s.startAt }; });
+  let msg = 'Estos son los horarios disponibles:\\n';
+  page.forEach(function(s,i){ msg += (i+1) + '. ' + fmt(s.startAt, tz) + '\\n'; });
+  msg += 'Respondé con el número. Escribí MAS para ver más, o "cancelar" para salir.';
+  return out(true, msg, Object.assign({}, ns, { appt_step:'choose_slot', appt_offered: offered, appt_slot_cursor: start, appt_correlation_id: CID }));
+}
+
+// ---- Sin sub-flujo activo (o sesión vencida hace >8hs): menú inicial -------
+// No infiere intención del texto: siempre muestra las 5 opciones numeradas.
+if (!step){
+  let settingsRes;
+  try { settingsRes = await api('settings', { tenant_id }); } catch(e){ return notHandled(); }
+  const welcomeMsg = (settingsRes && settingsRes.msg_welcome_menu) || 'Escribí un número del 1 al 5 para elegir una opción.';
+  return out(true, welcomeMsg, { appt_step: 'main_menu' });
+}
+
+if (step === 'main_menu'){
+  const n = strictNumIn(text);
+  if (n === 1){
+    let cat;
+    try { cat = await api('catalog', { tenant_id, kind: 'treatments' }); } catch(e){ return notHandled(); }
+    const treatments = (cat && cat.treatments) || [];
+    if (treatments.length === 0) return out(true, 'No hay tratamientos configurados todavía.', st0Clear());
+    let msg = '¡Perfecto! ¿Qué tratamiento necesitás?\\n';
+    treatments.forEach(function(t,i){ msg += (i+1) + '. ' + t.name + ' (' + t.duration_minutes + ' min)\\n'; });
+    msg += 'Respondé con el número.';
+    return out(true, msg, Object.assign({}, state, { appt_step:'choose_treatment', appt_topts: treatments.map(function(t){ return t.id; }), appt_correlation_id: CID }));
+  }
+  if (n === 2 || n === 3){
+    const cancelMode = n === 3;
+    const up = await listUpcoming();
+    const appts = (up && up.appointments) || [];
+    if (appts.length === 0) return out(true, 'No tenés turnos futuros agendados.', st0Clear());
+    let msg = 'Tus próximos turnos:\\n';
+    appts.forEach(function(a,i){ msg += (i+1) + '. ' + fmt(a.start_at) + '\\n'; });
+    const ids = appts.map(function(a){ return a.id; });
+    const tids = appts.map(function(a){ return a.treatment_id; });
+    msg += cancelMode ? 'Respondé con el número del turno a cancelar.' : 'Respondé con el número del turno a reprogramar.';
+    return out(true, msg, Object.assign({}, state, { appt_step: cancelMode ? 'cancel_pick' : 'resch_pick', appt_options: ids, appt_topts_resch: tids, appt_correlation_id: CID }));
+  }
+  if (n === 4){
+    const up = await listUpcoming();
+    const appts = (up && up.appointments) || [];
+    if (appts.length === 0) return out(true, 'No tenés turnos futuros agendados.', st0Clear());
+    let msg = 'Tus próximos turnos:\\n';
+    appts.forEach(function(a,i){ msg += (i+1) + '. ' + fmt(a.start_at) + '\\n'; });
+    return out(true, msg + '¿Necesitás algo más? Escribime cuando quieras para ver las opciones de nuevo.', st0Clear());
+  }
+  if (n === 5){
+    return out(true, 'Contanos brevemente en qué te podemos ayudar y en breve te atiende un representante.', Object.assign({}, state, { appt_step: 'awaiting_operator_query' }));
+  }
+  return out(true, 'Por favor respondé con un número del 1 al 5.', state);
+}
+
+// ---- Espera la consulta libre antes de derivar a un operador ---------------
+if (step === 'awaiting_operator_query'){
+  return out(true, 'Gracias, en breve te va a atender un representante.', st0Clear(), {
+    patch: { handoff: true },
+    extra: { appt_handoff_triggered: true, appt_consulta: text },
+  });
+}
+
+// ---- Cancelar todo el sub-flujo ----
+if (/^\\s*(cancelar|salir|cancel)\\s*$/i.test(low) && step !== 'cancel_pick'){
+  if (state.appt_hold_id){ try { await api('cancel', { tenant_id, appointment_id: state.appt_hold_id, correlation_id: CID }); } catch(e){} }
+  return out(true, 'Listo, cancelé el proceso. Escribime cuando quieras para volver a empezar.', st0Clear());
+}
+
+if (step === 'choose_treatment'){
+  const n = numIn(text); const ids = state.appt_topts || [];
+  if (!n || n < 1 || n > ids.length) return out(true, 'Respondé con el número del tratamiento, por favor.', state);
+  const tid = ids[n-1];
+  let pj; try { pj = await api('catalog', { tenant_id, kind:'professionals', treatment_id: tid }); } catch(e){ return out(true, 'No pude cargar los profesionales ahora.', state); }
+  const profs = (pj && pj.professionals) || [];
+  if (profs.length === 0) return out(true, 'No hay profesionales disponibles para ese tratamiento.', st0Clear());
+  const ns = Object.assign({}, state, { appt_treatment_id: tid });
+  if (profs.length === 1){ ns.appt_professional_id = profs[0].id; return await showAvailability(ns, 0); }
+  let msg = '¿Con qué profesional?\\n0. Cualquiera disponible\\n';
+  profs.forEach(function(p,i){ msg += (i+1) + '. ' + p.first_name + (p.last_name ? (' ' + p.last_name) : '') + '\\n'; });
+  msg += 'Respondé con el número.';
+  return out(true, msg, Object.assign({}, ns, { appt_step:'choose_professional', appt_popts: profs.map(function(p){ return p.id; }) }));
+}
+
+if (step === 'choose_professional'){
+  const n = numIn(text); const ids = state.appt_popts || [];
+  if (n === null || n < 0 || n > ids.length) return out(true, 'Respondé con el número (0 = cualquiera).', state);
+  const pid = n === 0 ? null : ids[n-1];
+  return await showAvailability(Object.assign({}, state, { appt_professional_id: pid }), 0);
+}
+
+if (step === 'choose_slot'){
+  if (/(^|\\s)mas(\\s|$)/i.test(low) || /más/.test(low)) return await showAvailability(state, (state.appt_slot_cursor || 0) + 6);
+  const n = numIn(text); const offered = state.appt_offered || [];
+  if (!n || n < 1 || n > offered.length) return out(true, 'Respondé con el número del horario, o MAS para ver más.', state);
+  const pick = offered[n-1];
+  if (state.appt_mode === 'reschedule'){
+    try { await api('reschedule', { tenant_id, appointment_id: state.appt_resch_id, new_start_at: pick.s, new_professional_id: pick.p, idempotency_key: CID + ':resch:' + pick.s, correlation_id: CID }); }
+    catch(e){ return out(true, 'Ese horario ya no está disponible. Elegí otro:', state); }
+    return out(true, '¡Listo! Reprogramamos tu turno para ' + fmt(pick.s) + '.', st0Clear());
+  }
+  let hr;
+  try { hr = await api('hold', { tenant_id, professional_id: pick.p, treatment_id: state.appt_treatment_id, start_at: pick.s, contact_id, phone, idempotency_key: CID + ':hold:' + pick.s, correlation_id: CID }); }
+  catch(e){ return out(true, 'Ese horario ya no está disponible. Elegí otro de la lista.', state); }
+  const appt = hr && hr.appointment;
+  if (!appt) return out(true, 'Ese horario ya no está disponible. Elegí otro de la lista.', state);
+  return out(true, 'Reservé provisoriamente ' + fmt(pick.s) + '. ¿Confirmás? (respondé SÍ o NO)', Object.assign({}, state, { appt_step:'confirm', appt_hold_id: appt.id, appt_hold_label: fmt(pick.s) }));
+}
+
+if (step === 'confirm'){
+  if (/^\\s*(si|sí|s|dale|ok|oka|confirmo|confirmar|listo)/i.test(low)){
+    try { await api('confirm', { tenant_id, appointment_id: state.appt_hold_id, correlation_id: CID }); }
+    catch(e){ return out(true, 'La reserva expiró. Escribí "turno" para empezar de nuevo.', st0Clear()); }
+    return out(true, '¡Turno confirmado! Te esperamos el ' + (state.appt_hold_label || '') + '. Si necesitás cancelar o reprogramar, escribime.', st0Clear());
+  }
+  if (/^\\s*(no|n)/i.test(low)){
+    if (state.appt_hold_id){ try { await api('cancel', { tenant_id, appointment_id: state.appt_hold_id, correlation_id: CID }); } catch(e){} }
+    return out(true, 'Listo, no agendé nada. Escribí "turno" para elegir otro horario.', st0Clear());
+  }
+  return out(true, 'Respondé SÍ para confirmar o NO para cancelar.', state);
+}
+
+if (step === 'cancel_pick'){
+  const n = numIn(text); const ids = state.appt_options || [];
+  if (!n || n < 1 || n > ids.length) return out(true, 'Respondé con el número del turno a cancelar.', state);
+  try { await api('cancel', { tenant_id, appointment_id: ids[n-1], correlation_id: CID }); } catch(e){ return out(true, 'No pude cancelar ahora, probá más tarde.', st0Clear()); }
+  return out(true, 'Tu turno fue cancelado. El horario vuelve a quedar disponible.', st0Clear());
+}
+
+if (step === 'resch_pick'){
+  const n = numIn(text); const ids = state.appt_options || []; const tids = state.appt_topts_resch || [];
+  if (!n || n < 1 || n > ids.length) return out(true, 'Respondé con el número del turno a reprogramar.', state);
+  return await showAvailability(Object.assign({}, state, { appt_mode:'reschedule', appt_resch_id: ids[n-1], appt_treatment_id: tids[n-1] }), 0);
+}
+
+return notHandled();`,
+  ),
+);
+apptEngine.position = [3220, yT];
+
+const apptHandledIf = push(
+  ifBool("Appt manejó?", "={{ $('Appt engine').item.json.handled }}", yT),
+);
+apptHandledIf.position = [3500, yT];
+
+const patchApptState = push(
+  http(
+    "Patch flow_state (appt)",
+    "PATCH",
+    `=${SUPA}/contacts?id=eq.{{ $('contact_id').item.json.contact_id }}`,
+    {
+      headers: supaHeaders([{ name: "Prefer", value: "return=minimal" }]),
+      jsonBody: "={{ JSON.stringify($('Appt engine').item.json.patch_body) }}",
+    },
+    yT,
+  ),
+);
+patchApptState.position = [3780, yT];
+
+const enviarAppt = push(
+  ifBool("Enviar? (appt)", "={{ $('Appt engine').item.json.should_send }}", yT),
+);
+enviarAppt.position = [4060, yT];
+
+const waitAppt = push(
+  node(
+    "Wait delay (appt)",
+    "n8n-nodes-base.wait",
+    1.1,
+    { amount: "={{ $('Appt engine').item.json.reply_delay_seconds }}", unit: "seconds" },
+    yT,
+    { webhookId: randomUUID() },
+  ),
+);
+waitAppt.position = [4340, yT];
+
+const sendAppt = push(
+  http(
+    "Send WhatsApp (appt)",
+    "POST",
+    "=https://graph.facebook.com/v21.0/{{ $('contact_id').item.json.phone_number_id }}/messages",
+    {
+      headers: metaHeaders,
+      jsonBody:
+        "={{ JSON.stringify({ messaging_product: 'whatsapp', to: $('contact_id').item.json.from, type: 'text', text: { body: $('Appt engine').item.json.reply } }) }}",
+      extra: { onError: "continueErrorOutput" },
+      options: { batching: { batch: { batchSize: 1, batchInterval: 100 } } },
+    },
+    yT,
+  ),
+);
+sendAppt.position = [4620, yT];
+
+const insertOutboundAppt = push(
+  http(
+    "Insert outbound (appt)",
+    "POST",
+    `=${SUPA}/messages`,
+    {
+      headers: supaHeaders([{ name: "Prefer", value: "return=minimal" }]),
+      jsonBody:
+        "={{ JSON.stringify({ tenant_id: $('contact_id').item.json.tenant_id, contact_id: $('contact_id').item.json.contact_id, whatsapp_message_id: (($json.messages && $json.messages[0] && $json.messages[0].id) || null), direction: 'outbound', content: $('Appt engine').item.json.reply, message_type: 'text', sent_at: new Date().toISOString() }) }}",
+    },
+    yT,
+  ),
+);
+insertOutboundAppt.position = [4900, yT];
+
+const logFailedSendAppt = push(
+  http(
+    "Log failed (send appt)",
+    "POST",
+    `=${SUPA}/failed_messages`,
+    {
+      headers: supaHeaders([{ name: "Prefer", value: "return=minimal" }]),
+      jsonBody:
+        "={{ JSON.stringify({ tenant_id: $('contact_id').item.json.tenant_id, contact_phone: $('contact_id').item.json.from, content: $('Appt engine').item.json.reply, error: 'fallo el envio a Meta (appt)' }) }}",
+    },
+    yT + 160,
+  ),
+);
+logFailedSendAppt.position = [5180, yT + 160];
+
+// Log durable de la decisión del sub-flujo de turnos (event_logs).
+const logFlowAppt = push(
+  http(
+    "Log flow (appt)",
+    "POST",
+    `=${SUPA}/event_logs`,
+    {
+      headers: supaHeaders([{ name: "Prefer", value: "return=minimal" }]),
+      jsonBody:
+        "={{ JSON.stringify({ tenant_id: $('contact_id').item.json.tenant_id, contact_id: $('contact_id').item.json.contact_id, phone: $('contact_id').item.json.from, source: 'n8n', level: 'info', event: 'appt_flow', message: ($('Appt engine').item.json.reply || '').slice(0, 300), data: { text: $('contact_id').item.json.text, handled: $('Appt engine').item.json.handled, step: ($('Appt engine').item.json.patch_body.flow_state || {}).appt_step, correlation_id: ($('Appt engine').item.json.patch_body.flow_state || {}).appt_correlation_id } }) }}",
+      extra: { onError: "continueRegularOutput" },
+    },
+    yT + 320,
+  ),
+);
+logFlowAppt.position = [3780, yT + 320];
+
+// ----- Handoff con contexto (opción 5 del menú de turnos) -------------------
+// Cuando el Appt engine deriva a un operador, genera el mismo tipo de resumen
+// con Claude, aplica las mismas labels ("Necesita agente"/"Urgente") y dispara
+// la misma alerta por email que ya existe para el modo menú — reutilizando
+// los nodos genéricos (Get/Link attention label, Get/Link urgent label,
+// prep alerta/Wait alerta/POST alerta/Alerta configurada?, que no dependen de
+// qué nodo disparó el handoff) y agregando piezas propias para lo que sí es
+// específico de cada rama (equivalentes a Get history/prep summary/Claude
+// summary/parse result/Update needs/Set urgent flag del modo menú). Importante:
+// NO reusar "Get history (menu)" en sí — tiene una conexión de salida fija
+// hacia "prep summary" (lee $('Menu engine'), que nunca corrió en esta rama).
+const yTH = yT + 500;
+
+const apptHandoffIf = push(
+  ifBool("Resumir? (appt)", "={{ $('Appt engine').item.json.appt_handoff_triggered }}", yTH),
+);
+apptHandoffIf.position = [3780, yTH];
+
+// Nodo propio (NO reusar "Get history (menu)"): ese nodo ya tiene una conexión
+// de salida fija hacia "prep summary", que lee $('Menu engine') y rompe si se
+// dispara desde esta rama (Menu engine nunca corrió en esta ejecución). Mismo
+// query, pero con su propia salida exclusiva hacia "prep summary (appt)".
+const getHistoryAppt = push(
+  http(
+    "Get history (appt)",
+    "GET",
+    `=${SUPA}/messages?contact_id=eq.{{ $('contact_id').item.json.contact_id }}&order=sent_at.desc&limit=15&select=direction,content,sent_at`,
+    { headers: supaHeaders() },
+    yTH,
+  ),
+);
+getHistoryAppt.position = [4060, yTH];
+
+const prepSummaryAppt = push(
+  code(
+    "prep summary (appt)",
+    `function unwrap(json){ if(Array.isArray(json)) return json; if(json && Array.isArray(json.body)) return json.body; if(json && typeof json === 'object') return [json]; return []; }
+const consulta = ($('Appt engine').first().json.appt_consulta || '').toString().trim();
+const hist = unwrap($('Get history (appt)').first().json).slice().reverse();
+const comments = hist.filter(m => m.direction === 'inbound' && m.content && !/^\\s*\\d+\\s*$/.test(m.content)).map(m => m.content);
+const extra = comments.length ? ('\\nMensajes anteriores del contacto: ' + comments.join(' | ')) : '';
+let convo = 'El contacto pidió hablar con un operador desde el menú de turnos.';
+if (consulta) convo += '\\nConsulta que escribió: ' + consulta;
+convo += extra;
+return [{ json: { convo, consulta } }];`,
+    yTH,
+  ),
+);
+prepSummaryAppt.position = [4340, yTH];
+
+const claudeSummaryAppt = push(
+  http(
+    "Claude summary (appt)",
+    "POST",
+    "https://api.anthropic.com/v1/messages",
+    {
+      headers: anthropicHeaders,
+      jsonBody:
+        "={{ JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 150, system: [{ type: 'text', text: 'Sos asistente de atención al cliente. Un contacto pidió hablar con un representante humano desde el menú de turnos de WhatsApp y escribió una consulta. A partir de esa consulta, devolvé SOLO un JSON válido (sin texto extra ni markdown) con la forma {\\\"urgente\\\": true|false, \\\"resumen\\\": \\\"...\\\"}. El campo resumen: 1 o 2 frases en español de qué necesita el contacto, para que un agente lo retome; sé específico; NO escribas solo que espera ser atendido. El campo urgente: true SOLO si refleja una emergencia real (riesgo a la salud o seguridad, algo que no puede esperar); si no, false.', cache_control: { type: 'ephemeral' } }], messages: [{ role: 'user', content: $('prep summary (appt)').item.json.convo }] }) }}",
+      extra: { onError: "continueRegularOutput" },
+    },
+    yTH,
+  ),
+);
+claudeSummaryAppt.position = [4620, yTH];
+
+const parseResultAppt = push(
+  code(
+    "parse result (appt)",
+    `const c = $('Claude summary (appt)').first().json;
+const raw = ((c.content && c.content[0] && c.content[0].text) || '').trim();
+let urgente = false;
+let resumen = '';
+try {
+  const m = raw.match(/\\{[\\s\\S]*\\}/);
+  const obj = JSON.parse(m ? m[0] : raw);
+  if (typeof obj.urgente === 'boolean') urgente = obj.urgente;
+  if (obj.resumen) resumen = String(obj.resumen).trim();
+} catch (e) {
+  resumen = raw;
+}
+if (!resumen) {
+  const ps = $('prep summary (appt)').first().json;
+  resumen = ps.consulta ? ('Consulta: ' + ps.consulta) : 'Pidió hablar con un operador desde el menú de turnos.';
+}
+return [{ json: { resumen, urgente } }];`,
+    yTH,
+  ),
+);
+parseResultAppt.position = [4760, yTH];
+
+const updateNeedsAppt = push(
+  http(
+    "Update needs (appt)",
+    "PATCH",
+    `=${SUPA}/contacts?id=eq.{{ $('contact_id').item.json.contact_id }}`,
+    {
+      headers: supaHeaders([{ name: "Prefer", value: "return=minimal" }]),
+      jsonBody:
+        "={{ JSON.stringify({ needs: $('parse result (appt)').item.json.resumen, status: 'active' }) }}",
+    },
+    yTH,
+  ),
+);
+updateNeedsAppt.position = [4900, yTH];
+
+const urgentIfAppt = push(
+  ifBool("Urgente? (appt)", "={{ $('parse result (appt)').item.json.urgente }}", yTH),
+);
+urgentIfAppt.position = [5180, yTH];
+
+const setUrgentFlagAppt = push(
+  http(
+    "Set urgent flag (appt)",
+    "PATCH",
+    `=${SUPA}/contacts?id=eq.{{ $('contact_id').item.json.contact_id }}`,
+    {
+      headers: supaHeaders([{ name: "Prefer", value: "return=minimal" }]),
+      jsonBody:
+        "={{ JSON.stringify({ flow_state: Object.assign({}, $('Appt engine').item.json.patch_body.flow_state, { urgent: true }) }) }}",
+    },
+    yTH,
+  ),
+);
+setUrgentFlagAppt.position = [5460, yTH];
+
 // Sticky note con docs
 const sticky = {
   parameters: {
     content:
-      "## WhatsApp Agent\\n\\nEnv requeridas (Settings -> Variables o env del contenedor):\\n- SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY\\n- ANTHROPIC_API_KEY\\n- WHATSAPP_API_TOKEN\\n- N8N_WEBHOOK_SECRET\\n\\nRequiere N8N_BLOCK_ENV_ACCESS_IN_NODE=false para leer $env.\\n\\nDocs Meta: https://developers.facebook.com/docs/whatsapp/cloud-api/reference/messages",
-    height: 320,
+      "## WhatsApp Agent\\n\\nEnv requeridas (Settings -> Variables o env del contenedor):\\n- SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY\\n- ANTHROPIC_API_KEY\\n- WHATSAPP_API_TOKEN\\n- N8N_WEBHOOK_SECRET\\n- CRM_BASE_URL (alerta handoff)\\n- CRM_INTERNAL_URL + APPOINTMENTS_INTERNAL_SECRET (sub-flujo de turnos)\\n\\nRequiere N8N_BLOCK_ENV_ACCESS_IN_NODE=false para leer $env.\\n\\nDocs Meta: https://developers.facebook.com/docs/whatsapp/cloud-api/reference/messages",
+    height: 360,
     width: 360,
     color: 4,
   },
@@ -1075,7 +1523,31 @@ connect("Insert inbound (media)", "Get bot_config");
 connect("Insert inbound", "Get bot_config");
 // Ruteo por tipo de flujo
 connect("Get bot_config", "bot cfg");
-connect("bot cfg", "Modo menu?");
+// Primero pasa por el sub-flujo de TURNOS: si lo maneja, corta ahí; si no,
+// sigue al ruteo normal (menú / IA). No afecta a tenants sin el módulo.
+connect("bot cfg", "Appt engine");
+connect("Appt engine", "Appt manejó?");
+connect("Appt engine", "Log flow (appt)"); // log durable (fan-out)
+connect("Appt manejó?", "Patch flow_state (appt)", 0); // true  -> turnos lo maneja
+connect("Appt manejó?", "Modo menu?", 1); // false -> flujo normal (menú / IA)
+connect("Patch flow_state (appt)", "Enviar? (appt)");
+connect("Enviar? (appt)", "Wait delay (appt)", 0);
+connect("Wait delay (appt)", "Send WhatsApp (appt)");
+connect("Send WhatsApp (appt)", "Insert outbound (appt)", 0); // éxito
+connect("Send WhatsApp (appt)", "Log failed (send appt)", 1); // error
+// Handoff con contexto desde el menú de turnos (opción 5): reutiliza los
+// nodos genéricos del resumen de handoff (no dependen de qué rama disparó).
+connect("Appt manejó?", "Resumir? (appt)", 0); // fan-out, en paralelo a Patch flow_state (appt)
+connect("Resumir? (appt)", "Get history (appt)", 0); // nodo propio (ver comentario en su definición)
+connect("Get history (appt)", "prep summary (appt)");
+connect("prep summary (appt)", "Claude summary (appt)");
+connect("Claude summary (appt)", "parse result (appt)");
+connect("parse result (appt)", "Update needs (appt)");
+connect("Update needs (appt)", "Get attention label"); // reusa el mismo nodo que el modo menú
+connect("Resumir? (appt)", "Alerta configurada?", 0); // reusa la misma rama de alerta por email
+connect("parse result (appt)", "Urgente? (appt)");
+connect("Urgente? (appt)", "Set urgent flag (appt)", 0);
+connect("Set urgent flag (appt)", "Get urgent label"); // reusa el mismo nodo que el modo menú
 connect("Modo menu?", "Menu engine", 0); // true  -> rama menú
 connect("Modo menu?", "Get history", 1); // false -> rama IA
 connect("Get history", "prep AI");
